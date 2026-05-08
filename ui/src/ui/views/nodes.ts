@@ -5,6 +5,7 @@ import {
   type PendingDeviceApprovalKind,
 } from "../../../../src/shared/device-pairing-access.js";
 import { t } from "../../i18n/index.ts";
+import { localizeConfigCopy } from "../../i18n/lib/config-copy.ts";
 import type { DeviceTokenSummary, PairedDevice, PendingDevice } from "../controllers/devices.ts";
 import { formatRelativeTimestamp, formatList } from "../format.ts";
 import { normalizeOptionalString } from "../string-coerce.ts";
@@ -21,8 +22,8 @@ export function renderNodes(props: NodesProps) {
     <section class="card">
       <div class="row" style="justify-content: space-between;">
         <div>
-          <div class="card-title">Nodes</div>
-          <div class="card-sub">Paired devices and live links.</div>
+          <div class="card-title">${localizeConfigCopy("Nodes")}</div>
+          <div class="card-sub">${localizeConfigCopy("Paired devices and live links.")}</div>
         </div>
         <button class="btn" ?disabled=${props.loading} @click=${props.onRefresh}>
           ${props.loading ? t("common.loading") : t("common.refresh")}
@@ -30,7 +31,7 @@ export function renderNodes(props: NodesProps) {
       </div>
       <div class="list" style="margin-top: 16px;">
         ${props.nodes.length === 0
-          ? html` <div class="muted">No nodes found.</div> `
+          ? html` <div class="muted">${localizeConfigCopy("No nodes found.")}</div> `
           : props.nodes.map((n) => renderNode(n))}
       </div>
     </section>
@@ -50,8 +51,8 @@ function renderDevices(props: NodesProps) {
     <section class="card">
       <div class="row" style="justify-content: space-between;">
         <div>
-          <div class="card-title">Devices</div>
-          <div class="card-sub">Pairing requests + role tokens.</div>
+          <div class="card-title">${localizeConfigCopy("Devices")}</div>
+          <div class="card-sub">${localizeConfigCopy("Pairing requests + role tokens.")}</div>
         </div>
         <button class="btn" ?disabled=${props.devicesLoading} @click=${props.onDevicesRefresh}>
           ${props.devicesLoading ? t("common.loading") : t("common.refresh")}
@@ -63,7 +64,7 @@ function renderDevices(props: NodesProps) {
       <div class="list" style="margin-top: 16px;">
         ${pending.length > 0
           ? html`
-              <div class="muted" style="margin-bottom: 8px;">Pending</div>
+              <div class="muted" style="margin-bottom: 8px;">${localizeConfigCopy("Pending")}</div>
               ${pending.map((req) =>
                 renderPendingDevice(req, props, lookupPairedDevice(pairedByDeviceId, req)),
               )}
@@ -71,12 +72,14 @@ function renderDevices(props: NodesProps) {
           : nothing}
         ${paired.length > 0
           ? html`
-              <div class="muted" style="margin-top: 12px; margin-bottom: 8px;">Paired</div>
+              <div class="muted" style="margin-top: 12px; margin-bottom: 8px;">
+                ${localizeConfigCopy("Paired")}
+              </div>
               ${paired.map((device) => renderPairedDevice(device, props))}
             `
           : nothing}
         ${pending.length === 0 && paired.length === 0
-          ? html` <div class="muted">No paired devices.</div> `
+          ? html` <div class="muted">${localizeConfigCopy("No paired devices.")}</div> `
           : nothing}
       </div>
     </section>
@@ -105,21 +108,21 @@ function lookupPairedDevice(
 
 function formatAccessSummary(access: DevicePairingAccessSummary | null): string {
   if (!access) {
-    return "none";
+    return localizeConfigCopy("none");
   }
-  return `roles: ${formatList(access.roles)} · scopes: ${formatList(access.scopes)}`;
+  return `${localizeConfigCopy("roles:")} ${formatList(access.roles)} · ${localizeConfigCopy("scopes:")} ${formatList(access.scopes)}`;
 }
 
 function renderPendingApprovalNote(kind: PendingDeviceApprovalKind) {
   switch (kind) {
     case "scope-upgrade":
-      return "scope upgrade requires approval";
+      return localizeConfigCopy("scope upgrade requires approval");
     case "role-upgrade":
-      return "role upgrade requires approval";
+      return localizeConfigCopy("role upgrade requires approval");
     case "re-approval":
-      return "reconnect details changed; approval required";
+      return localizeConfigCopy("reconnect details changed; approval required");
     case "new-pairing":
-      return "new device pairing request";
+      return localizeConfigCopy("new device pairing request");
   }
   const exhaustiveKind: never = kind;
   void exhaustiveKind;
@@ -138,15 +141,16 @@ function renderPendingDevice(req: PendingDevice, props: NodesProps, paired?: Pai
         <div class="list-title">${name}</div>
         <div class="list-sub">${req.deviceId}${ip}</div>
         <div class="muted" style="margin-top: 6px;">
-          ${renderPendingApprovalNote(approval.kind)} · requested ${age}${repair}
+          ${renderPendingApprovalNote(approval.kind)} · ${localizeConfigCopy("requested")}
+          ${age}${repair}
         </div>
         <div class="muted" style="margin-top: 6px;">
-          requested: ${formatAccessSummary(approval.requested)}
+          ${localizeConfigCopy("requested:")} ${formatAccessSummary(approval.requested)}
         </div>
         ${approval.approved
           ? html`
               <div class="muted" style="margin-top: 6px;">
-                approved now: ${formatAccessSummary(approval.approved)}
+                ${localizeConfigCopy("approved now:")} ${formatAccessSummary(approval.approved)}
               </div>
             `
           : nothing}
@@ -154,10 +158,10 @@ function renderPendingDevice(req: PendingDevice, props: NodesProps, paired?: Pai
       <div class="list-meta">
         <div class="row" style="justify-content: flex-end; gap: 8px; flex-wrap: wrap;">
           <button class="btn btn--sm primary" @click=${() => props.onDeviceApprove(req.requestId)}>
-            Approve
+            ${localizeConfigCopy("Approve")}
           </button>
           <button class="btn btn--sm" @click=${() => props.onDeviceReject(req.requestId)}>
-            Reject
+            ${localizeConfigCopy("Reject")}
           </button>
         </div>
       </div>
@@ -168,8 +172,8 @@ function renderPendingDevice(req: PendingDevice, props: NodesProps, paired?: Pai
 function renderPairedDevice(device: PairedDevice, props: NodesProps) {
   const name = normalizeOptionalString(device.displayName) || device.deviceId;
   const ip = device.remoteIp ? ` · ${device.remoteIp}` : "";
-  const roles = `roles: ${formatList(device.roles)}`;
-  const scopes = `scopes: ${formatList(device.scopes)}`;
+  const roles = `${localizeConfigCopy("roles:")} ${formatList(device.roles)}`;
+  const scopes = `${localizeConfigCopy("scopes:")} ${formatList(device.scopes)}`;
   const tokens = Array.isArray(device.tokens) ? device.tokens : [];
   return html`
     <div class="list-item">
@@ -178,9 +182,11 @@ function renderPairedDevice(device: PairedDevice, props: NodesProps) {
         <div class="list-sub">${device.deviceId}${ip}</div>
         <div class="muted" style="margin-top: 6px;">${roles} · ${scopes}</div>
         ${tokens.length === 0
-          ? html` <div class="muted" style="margin-top: 6px">Tokens: none</div> `
+          ? html`
+              <div class="muted" style="margin-top: 6px">${localizeConfigCopy("Tokens: none")}</div>
+            `
           : html`
-              <div class="muted" style="margin-top: 10px;">Tokens</div>
+              <div class="muted" style="margin-top: 10px;">${localizeConfigCopy("Tokens")}</div>
               <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 6px;">
                 ${tokens.map((token) => renderTokenRow(device.deviceId, token, props))}
               </div>
@@ -191,8 +197,8 @@ function renderPairedDevice(device: PairedDevice, props: NodesProps) {
 }
 
 function renderTokenRow(deviceId: string, token: DeviceTokenSummary, props: NodesProps) {
-  const status = token.revokedAtMs ? "revoked" : "active";
-  const scopes = `scopes: ${formatList(token.scopes)}`;
+  const status = token.revokedAtMs ? localizeConfigCopy("revoked") : localizeConfigCopy("active");
+  const scopes = `${localizeConfigCopy("scopes:")} ${formatList(token.scopes)}`;
   const when = formatRelativeTimestamp(
     token.rotatedAtMs ?? token.createdAtMs ?? token.lastUsedAtMs ?? null,
   );
@@ -204,7 +210,7 @@ function renderTokenRow(deviceId: string, token: DeviceTokenSummary, props: Node
           class="btn btn--sm"
           @click=${() => props.onDeviceRotate(deviceId, token.role, token.scopes)}
         >
-          Rotate
+          ${localizeConfigCopy("Rotate")}
         </button>
         ${token.revokedAtMs
           ? nothing
@@ -213,7 +219,7 @@ function renderTokenRow(deviceId: string, token: DeviceTokenSummary, props: Node
                 class="btn btn--sm danger"
                 @click=${() => props.onDeviceRevoke(deviceId, token.role)}
               >
-                Revoke
+                ${localizeConfigCopy("Revoke")}
               </button>
             `}
       </div>
@@ -321,7 +327,9 @@ function renderBindings(state: BindingState) {
                         state.onBindDefault(value ? value : null);
                       }}
                     >
-                      <option value="" ?selected=${defaultValue === ""}>Any node</option>
+                      <option value="" ?selected=${defaultValue === ""}>
+                        ${localizeConfigCopy("Any node")}
+                      </option>
                       ${state.nodes.map(
                         (node) =>
                           html`<option value=${node.id} ?selected=${defaultValue === node.id}>
@@ -331,13 +339,17 @@ function renderBindings(state: BindingState) {
                     </select>
                   </label>
                   ${!supportsBinding
-                    ? html` <div class="muted">No nodes with system.run available.</div> `
+                    ? html`
+                        <div class="muted">
+                          ${localizeConfigCopy("No nodes with system.run available.")}
+                        </div>
+                      `
                     : nothing}
                 </div>
               </div>
 
               ${state.agents.length === 0
-                ? html` <div class="muted">No agents found.</div> `
+                ? html` <div class="muted">${localizeConfigCopy("No agents found.")}</div> `
                 : state.agents.map((agent) => renderAgentBinding(agent, state))}
             </div>
           `}
@@ -354,15 +366,15 @@ function renderAgentBinding(agent: BindingAgent, state: BindingState) {
       <div class="list-main">
         <div class="list-title">${label}</div>
         <div class="list-sub">
-          ${agent.isDefault ? "default agent" : "agent"} ·
+          ${agent.isDefault ? localizeConfigCopy("default agent") : localizeConfigCopy("agent")} ·
           ${bindingValue === "__default__"
-            ? `uses default (${state.defaultBinding ?? "any"})`
-            : `override: ${agent.binding}`}
+            ? `${localizeConfigCopy("uses default")} (${state.defaultBinding ?? localizeConfigCopy("any")})`
+            : `${localizeConfigCopy("override:")} ${agent.binding}`}
         </div>
       </div>
       <div class="list-meta">
         <label class="field">
-          <span>Binding</span>
+          <span>${localizeConfigCopy("Binding")}</span>
           <select
             ?disabled=${state.disabled || !supportsBinding}
             @change=${(event: Event) => {
@@ -372,7 +384,7 @@ function renderAgentBinding(agent: BindingAgent, state: BindingState) {
             }}
           >
             <option value="__default__" ?selected=${bindingValue === "__default__"}>
-              Use default
+              ${localizeConfigCopy("Use default")}
             </option>
             ${state.nodes.map(
               (node) =>
@@ -454,9 +466,11 @@ function renderNode(node: Record<string, unknown>) {
           ${typeof node.version === "string" ? ` · ${node.version}` : ""}
         </div>
         <div class="chip-row" style="margin-top: 6px;">
-          <span class="chip">${paired ? "paired" : "unpaired"}</span>
+          <span class="chip">
+            ${paired ? localizeConfigCopy("paired") : localizeConfigCopy("unpaired")}
+          </span>
           <span class="chip ${connected ? "chip-ok" : "chip-warn"}">
-            ${connected ? "connected" : "offline"}
+            ${connected ? localizeConfigCopy("connected") : localizeConfigCopy("offline")}
           </span>
           ${caps.slice(0, 12).map((c) => html`<span class="chip">${String(c)}</span>`)}
           ${commands.slice(0, 8).map((c) => html`<span class="chip">${String(c)}</span>`)}

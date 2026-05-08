@@ -12,8 +12,152 @@
     "target": "Control UI"
   },
   {
+    "source": "agent",
+    "target": "agent"
+  },
+  {
+    "source": "Agent",
+    "target": "Agent"
+  },
+  {
+    "source": "Agents",
+    "target": "Agents"
+  },
+  {
+    "source": "subagent",
+    "target": "subagent"
+  },
+  {
+    "source": "Subagent",
+    "target": "Subagent"
+  },
+  {
+    "source": "Subagents",
+    "target": "Subagents"
+  },
+  {
+    "source": "skill",
+    "target": "skill"
+  },
+  {
+    "source": "Skill",
+    "target": "Skill"
+  },
+  {
     "source": "Skills",
     "target": "Skills"
+  },
+  {
+    "source": "tool",
+    "target": "tool"
+  },
+  {
+    "source": "Tool",
+    "target": "Tool"
+  },
+  {
+    "source": "Tools",
+    "target": "Tools"
+  },
+  {
+    "source": "model",
+    "target": "model"
+  },
+  {
+    "source": "Model",
+    "target": "Model"
+  },
+  {
+    "source": "Models",
+    "target": "Models"
+  },
+  {
+    "source": "provider",
+    "target": "provider"
+  },
+  {
+    "source": "Provider",
+    "target": "Provider"
+  },
+  {
+    "source": "Providers",
+    "target": "Providers"
+  },
+  {
+    "source": "token",
+    "target": "token"
+  },
+  {
+    "source": "Token",
+    "target": "Token"
+  },
+  {
+    "source": "Tokens",
+    "target": "Tokens"
+  },
+  {
+    "source": "session",
+    "target": "session"
+  },
+  {
+    "source": "Session",
+    "target": "Session"
+  },
+  {
+    "source": "Sessions",
+    "target": "Sessions"
+  },
+  {
+    "source": "workspace",
+    "target": "workspace"
+  },
+  {
+    "source": "Workspace",
+    "target": "Workspace"
+  },
+  {
+    "source": "node",
+    "target": "node"
+  },
+  {
+    "source": "Node",
+    "target": "Node"
+  },
+  {
+    "source": "Nodes",
+    "target": "Nodes"
+  },
+  {
+    "source": "cron",
+    "target": "cron"
+  },
+  {
+    "source": "Cron",
+    "target": "Cron"
+  },
+  {
+    "source": "MCP",
+    "target": "MCP"
+  },
+  {
+    "source": "RPC",
+    "target": "RPC"
+  },
+  {
+    "source": "API",
+    "target": "API"
+  },
+  {
+    "source": "URL",
+    "target": "URL"
+  },
+  {
+    "source": "WebSocket",
+    "target": "WebSocket"
+  },
+  {
+    "source": "Nostr",
+    "target": "Nostr"
   },
   {
     "source": "Tailscale",

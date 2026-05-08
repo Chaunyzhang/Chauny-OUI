@@ -1,4 +1,5 @@
 import { html, nothing } from "lit";
+import { formatConfigNoSettings, localizeConfigCopy } from "../../i18n/lib/config-copy.ts";
 import { icons } from "../icons.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
 import type { ConfigUiHints } from "../types.ts";
@@ -341,11 +342,13 @@ function matchesSearch(params: {
   const criteria = parseConfigSearchQuery(params.query);
   const q = criteria.text;
   const meta = SECTION_META[params.key];
+  const metaLabel = localizeConfigCopy(meta?.label);
+  const metaDescription = localizeConfigCopy(meta?.description);
   const sectionMetaMatches =
     q &&
     (normalizeLowercaseStringOrEmpty(params.key).includes(q) ||
-      (meta?.label ? normalizeLowercaseStringOrEmpty(meta.label).includes(q) : false) ||
-      (meta?.description ? normalizeLowercaseStringOrEmpty(meta.description).includes(q) : false));
+      (metaLabel ? normalizeLowercaseStringOrEmpty(metaLabel).includes(q) : false) ||
+      (metaDescription ? normalizeLowercaseStringOrEmpty(metaDescription).includes(q) : false));
 
   if (sectionMetaMatches && criteria.tags.length === 0) {
     return true;
@@ -362,12 +365,14 @@ function matchesSearch(params: {
 
 export function renderConfigForm(props: ConfigFormProps) {
   if (!props.schema) {
-    return html` <div class="muted">Schema unavailable.</div> `;
+    return html` <div class="muted">${localizeConfigCopy("Schema unavailable.")}</div> `;
   }
   const schema = props.schema;
   const value = props.value ?? {};
   if (schemaType(schema) !== "object" || !schema.properties) {
-    return html` <div class="callout danger">Unsupported schema. Use Raw.</div> `;
+    return html`
+      <div class="callout danger">${localizeConfigCopy("Unsupported schema. Use Raw.")}</div>
+    `;
   }
   const unsupported = new Set(props.unsupportedPaths ?? []);
   const properties = schema.properties;
@@ -426,9 +431,7 @@ export function renderConfigForm(props: ConfigFormProps) {
     return html`
       <div class="config-empty">
         <div class="config-empty__icon">${icons.search}</div>
-        <div class="config-empty__text">
-          ${searchQuery ? `No settings match "${searchQuery}"` : "No settings in this section"}
-        </div>
+        <div class="config-empty__text">${formatConfigNoSettings(searchQuery)}</div>
       </div>
     `;
   }
@@ -483,8 +486,8 @@ export function renderConfigForm(props: ConfigFormProps) {
         ? (() => {
             const { sectionKey, subsectionKey, schema: node } = subsectionContext;
             const hint = hintForPath([sectionKey, subsectionKey], props.uiHints);
-            const label = hint?.label ?? node.title ?? humanize(subsectionKey);
-            const description = hint?.help ?? node.description ?? "";
+            const label = localizeConfigCopy(hint?.label ?? node.title ?? humanize(subsectionKey));
+            const description = localizeConfigCopy(hint?.help ?? node.description ?? "");
             const sectionValue = value[sectionKey];
             const scopedValue =
               sectionValue && typeof sectionValue === "object"
@@ -510,8 +513,8 @@ export function renderConfigForm(props: ConfigFormProps) {
             return renderSectionCard({
               id: `config-section-${key}`,
               sectionKey: key,
-              label: meta.label,
-              description: meta.description,
+              label: localizeConfigCopy(meta.label),
+              description: localizeConfigCopy(meta.description),
               showHeader: activeSection == null,
               node,
               nodeValue: value[key],

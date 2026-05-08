@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { ref } from "lit/directives/ref.js";
 import { t } from "../../i18n/index.ts";
+import { isZhCnConfigCopy, localizeConfigCopy } from "../../i18n/lib/config-copy.ts";
 import type {
   ClawHubSearchResult,
   ClawHubSkillDetail,
@@ -149,8 +150,8 @@ export function renderSkills(props: SkillsProps) {
     <section class="card">
       <div class="row" style="justify-content: space-between;">
         <div>
-          <div class="card-title">Skills</div>
-          <div class="card-sub">Installed skills and their status.</div>
+          <div class="card-title">${localizeConfigCopy("Skills")}</div>
+          <div class="card-sub">${localizeConfigCopy("Installed skills and their status.")}</div>
         </div>
         <button
           class="btn"
@@ -168,7 +169,8 @@ export function renderSkills(props: SkillsProps) {
               class="agent-tab ${props.statusFilter === tab.id ? "active" : ""}"
               @click=${() => props.onStatusFilterChange(tab.id)}
             >
-              ${tab.label}<span class="agent-tab-count">${statusCounts[tab.id]}</span>
+              ${localizeConfigCopy(tab.label)}
+              <span class="agent-tab-count">${statusCounts[tab.id]}</span>
             </button>
           `,
         )}
@@ -182,19 +184,21 @@ export function renderSkills(props: SkillsProps) {
           <input
             .value=${props.filter}
             @input=${(e: Event) => props.onFilterChange((e.target as HTMLInputElement).value)}
-            placeholder="Filter installed skills"
+            placeholder=${localizeConfigCopy("Filter installed skills")}
             autocomplete="off"
             name="skills-filter"
           />
         </label>
-        <div class="muted">${filtered.length} shown</div>
+        <div class="muted">
+          ${isZhCnConfigCopy() ? `已显示 ${filtered.length} 个` : `${filtered.length} shown`}
+        </div>
       </div>
 
       <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 16px;">
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
           <div style="font-weight: 600;">ClawHub</div>
           <div class="muted" style="font-size: 13px;">
-            Search and install skills from the registry
+            ${localizeConfigCopy("Search and install skills from the registry")}
           </div>
         </div>
         <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
@@ -203,12 +207,14 @@ export function renderSkills(props: SkillsProps) {
               .value=${props.clawhubQuery}
               @input=${(e: Event) =>
                 props.onClawHubQueryChange((e.target as HTMLInputElement).value)}
-              placeholder="Search ClawHub skills…"
+              placeholder=${localizeConfigCopy("Search ClawHub skills…")}
               autocomplete="off"
               name="clawhub-search"
             />
           </label>
-          ${props.clawhubSearchLoading ? html`<span class="muted">Searching…</span>` : nothing}
+          ${props.clawhubSearchLoading
+            ? html`<span class="muted">${localizeConfigCopy("Searching…")}</span>`
+            : nothing}
         </div>
         ${props.clawhubSearchError
           ? html`<div class="callout danger" style="margin-top: 8px;">
@@ -233,8 +239,8 @@ export function renderSkills(props: SkillsProps) {
         ? html`
             <div class="muted" style="margin-top: 16px">
               ${!props.connected && !props.report
-                ? "Not connected to gateway."
-                : "No skills found."}
+                ? localizeConfigCopy("Not connected to gateway.")
+                : localizeConfigCopy("No skills found.")}
             </div>
           `
         : html`
@@ -267,7 +273,9 @@ function renderClawHubResults(props: SkillsProps) {
     return nothing;
   }
   if (results.length === 0) {
-    return html`<div class="muted" style="margin-top: 8px;">No skills found on ClawHub.</div>`;
+    return html`<div class="muted" style="margin-top: 8px;">
+      ${localizeConfigCopy("No skills found on ClawHub.")}
+    </div>`;
   }
   return html`
     <div class="list" style="margin-top: 8px;">
@@ -293,7 +301,9 @@ function renderClawHubResults(props: SkillsProps) {
                   props.onClawHubInstall(r.slug);
                 }}
               >
-                ${props.clawhubInstallSlug === r.slug ? "Installing\u2026" : "Install"}
+                ${props.clawhubInstallSlug === r.slug
+                  ? localizeConfigCopy("Installing…")
+                  : localizeConfigCopy("Install")}
               </button>
             </div>
           </div>
@@ -329,7 +339,7 @@ function renderClawHubDetailDialog(props: SkillsProps) {
               (e.currentTarget as HTMLElement).closest("dialog")?.close();
             }}
           >
-            Close
+            ${localizeConfigCopy("Close")}
           </button>
         </div>
         <div class="md-preview-dialog__body" style="display: grid; gap: 16px;">
@@ -344,7 +354,7 @@ function renderClawHubDetailDialog(props: SkillsProps) {
                     </div>
                     ${detail.owner?.displayName
                       ? html`<div class="muted" style="font-size: 13px;">
-                          By
+                          ${localizeConfigCopy("By")}
                           ${detail.owner.displayName}${detail.owner.handle
                             ? html` (@${detail.owner.handle})`
                             : nothing}
@@ -352,7 +362,7 @@ function renderClawHubDetailDialog(props: SkillsProps) {
                       : nothing}
                     ${detail.latestVersion
                       ? html`<div class="muted" style="font-size: 13px;">
-                          Latest: v${detail.latestVersion.version}
+                          ${localizeConfigCopy("Latest")}: v${detail.latestVersion.version}
                         </div>`
                       : nothing}
                     ${detail.latestVersion?.changelog
@@ -364,7 +374,7 @@ function renderClawHubDetailDialog(props: SkillsProps) {
                       : nothing}
                     ${detail.metadata?.os
                       ? html`<div class="muted" style="font-size: 12px;">
-                          Platforms: ${detail.metadata.os.join(", ")}
+                          ${localizeConfigCopy("Platforms")}: ${detail.metadata.os.join(", ")}
                         </div>`
                       : nothing}
                     <button
@@ -377,11 +387,13 @@ function renderClawHubDetailDialog(props: SkillsProps) {
                       }}
                     >
                       ${props.clawhubInstallSlug === props.clawhubDetailSlug
-                        ? "Installing\u2026"
-                        : `Install ${detail.skill.displayName}`}
+                        ? localizeConfigCopy("Installing…")
+                        : isZhCnConfigCopy()
+                          ? `安装 ${detail.skill.displayName}`
+                          : `Install ${detail.skill.displayName}`}
                     </button>
                   `
-                : html`<div class="muted">Skill not found.</div>`}
+                : html`<div class="muted">${localizeConfigCopy("Skill not found.")}</div>`}
         </div>
       </div>
     </dialog>
@@ -460,7 +472,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
               (e.currentTarget as HTMLElement).closest("dialog")?.close();
             }}
           >
-            Close
+            ${localizeConfigCopy("Close")}
           </button>
         </div>
         <div class="md-preview-dialog__body" style="display: grid; gap: 16px;">
@@ -477,14 +489,18 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
                   class="callout"
                   style="border-color: var(--warn-subtle); background: var(--warn-subtle); color: var(--warn);"
                 >
-                  <div style="font-weight: 600; margin-bottom: 4px;">Missing requirements</div>
+                  <div style="font-weight: 600; margin-bottom: 4px;">
+                    ${localizeConfigCopy("Missing requirements")}
+                  </div>
                   <div>${missing.join(", ")}</div>
                 </div>
               `
             : nothing}
           ${reasons.length > 0
             ? html`
-                <div class="muted" style="font-size: 13px;">Reason: ${reasons.join(", ")}</div>
+                <div class="muted" style="font-size: 13px;">
+                  ${localizeConfigCopy("Reason:")} ${reasons.join(", ")}
+                </div>
               `
             : nothing}
 
@@ -499,7 +515,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
               />
             </label>
             <span style="font-size: 13px; font-weight: 500;">
-              ${skill.disabled ? "Disabled" : "Enabled"}
+              ${skill.disabled ? localizeConfigCopy("Disabled") : localizeConfigCopy("Enabled")}
             </span>
             ${canInstall
               ? html`<button
@@ -507,7 +523,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
                   ?disabled=${busy}
                   @click=${() => props.onInstall(skill.skillKey, skill.name, skill.install[0].id)}
                 >
-                  ${busy ? "Installing\u2026" : skill.install[0].label}
+                  ${busy ? localizeConfigCopy("Installing…") : skill.install[0].label}
                 </button>`
               : nothing}
           </div>
@@ -522,7 +538,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
                 <div style="display: grid; gap: 8px;">
                   <div class="field">
                     <span
-                      >API key
+                      >${localizeConfigCopy("API key")}
                       <span class="muted" style="font-weight: normal; font-size: 0.88em;"
                         >(${skill.primaryEnv})</span
                       ></span
@@ -538,7 +554,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
                     const href = safeExternalHref(skill.homepage);
                     return href
                       ? html`<div class="muted" style="font-size: 13px;">
-                          Get your key:
+                          ${localizeConfigCopy("Get your key:")}
                           <a href="${href}" target="_blank" rel="noopener noreferrer"
                             >${skill.homepage}</a
                           >
@@ -550,7 +566,7 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
                     ?disabled=${busy}
                     @click=${() => props.onSaveKey(skill.skillKey)}
                   >
-                    Save key
+                    ${localizeConfigCopy("Save key")}
                   </button>
                 </div>
               `
@@ -559,7 +575,10 @@ function renderSkillDetail(skill: SkillStatusEntry, props: SkillsProps) {
           <div
             style="border-top: 1px solid var(--border); padding-top: 12px; display: grid; gap: 6px; font-size: 12px; color: var(--muted);"
           >
-            <div><span style="font-weight: 600;">Source:</span> ${skill.source}</div>
+            <div>
+              <span style="font-weight: 600;">${localizeConfigCopy("Source:")}</span>
+              ${skill.source}
+            </div>
             <div style="font-family: var(--mono); word-break: break-all;">${skill.filePath}</div>
             ${(() => {
               const safeHref = safeExternalHref(skill.homepage);

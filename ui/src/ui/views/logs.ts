@@ -1,5 +1,6 @@
 import { html, nothing } from "lit";
 import { t } from "../../i18n/index.ts";
+import { localizeConfigCopy } from "../../i18n/lib/config-copy.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
 import type { LogEntry, LogLevel } from "../types.ts";
 
@@ -58,8 +59,8 @@ export function renderLogs(props: LogsProps) {
     <section class="card">
       <div class="row" style="justify-content: space-between;">
         <div>
-          <div class="card-title">Logs</div>
-          <div class="card-sub">Gateway file logs (JSONL).</div>
+          <div class="card-title">${localizeConfigCopy("Logs")}</div>
+          <div class="card-sub">${localizeConfigCopy("Gateway file logs (JSONL).")}</div>
         </div>
         <div class="row" style="gap: 8px;">
           <button class="btn" ?disabled=${props.loading} @click=${props.onRefresh}>
@@ -74,22 +75,22 @@ export function renderLogs(props: LogsProps) {
                 exportLabel,
               )}
           >
-            Export ${exportLabel}
+            ${localizeConfigCopy("Export")} ${localizeConfigCopy(exportLabel)}
           </button>
         </div>
       </div>
 
       <div class="filters" style="margin-top: 14px;">
         <label class="field" style="min-width: 220px;">
-          <span>Filter</span>
+          <span>${localizeConfigCopy("Filter")}</span>
           <input
             .value=${props.filterText}
             @input=${(e: Event) => props.onFilterTextChange((e.target as HTMLInputElement).value)}
-            placeholder="Search logs"
+            placeholder=${localizeConfigCopy("Search logs")}
           />
         </label>
         <label class="field checkbox">
-          <span>Auto-follow</span>
+          <span>${localizeConfigCopy("Auto-follow")}</span>
           <input
             type="checkbox"
             .checked=${props.autoFollow}
@@ -116,12 +117,14 @@ export function renderLogs(props: LogsProps) {
       </div>
 
       ${props.file
-        ? html`<div class="muted" style="margin-top: 10px;">File: ${props.file}</div>`
+        ? html`<div class="muted" style="margin-top: 10px;">
+            ${localizeConfigCopy("File:")} ${props.file}
+          </div>`
         : nothing}
       ${props.truncated
         ? html`
             <div class="callout" style="margin-top: 10px">
-              Log output truncated; showing latest chunk.
+              ${localizeConfigCopy("Log output truncated; showing latest chunk.")}
             </div>
           `
         : nothing}
@@ -131,7 +134,11 @@ export function renderLogs(props: LogsProps) {
 
       <div class="log-stream" style="margin-top: 12px;" @scroll=${props.onScroll}>
         ${filtered.length === 0
-          ? html` <div class="muted" style="padding: 12px">No log entries.</div> `
+          ? html`
+              <div class="muted" style="padding: 12px">
+                ${localizeConfigCopy("No log entries.")}
+              </div>
+            `
           : filtered.map(
               (entry) => html`
                 <div class="log-row">

@@ -1,5 +1,6 @@
 import { html, nothing } from "lit";
 import { t } from "../../i18n/index.ts";
+import { localizeConfigCopy, isZhCnConfigCopy } from "../../i18n/lib/config-copy.ts";
 import type {
   AgentIdentityResult,
   AgentsFilesListResult,
@@ -103,50 +104,60 @@ export function renderAgentOverview(params: {
 
   return html`
     <section class="card">
-      <div class="card-title">Overview</div>
-      <div class="card-sub">Workspace paths and identity metadata.</div>
+      <div class="card-title">${localizeConfigCopy("Overview")}</div>
+      <div class="card-sub">${localizeConfigCopy("Workspace paths and identity metadata.")}</div>
 
       <div class="agents-overview-grid" style="margin-top: 16px;">
         <div class="agent-kv">
-          <div class="label">Workspace</div>
+          <div class="label">${localizeConfigCopy("Workspace")}</div>
           <div>
             <button
               type="button"
               class="workspace-link mono"
               @click=${() => onSelectPanel("files")}
-              title="Open Files tab"
+              title=${localizeConfigCopy("Open Files tab")}
             >
               ${workspace}
             </button>
           </div>
         </div>
         <div class="agent-kv">
-          <div class="label">Primary Model</div>
+          <div class="label">${localizeConfigCopy("Primary Model")}</div>
           <div class="mono">${model}</div>
         </div>
         <div class="agent-kv">
-          <div class="label">Runtime</div>
+          <div class="label">${localizeConfigCopy("Runtime")}</div>
           <div class="mono">${runtime}</div>
         </div>
         <div class="agent-kv">
-          <div class="label">Skills Filter</div>
-          <div>${skillFilter ? `${skillCount} selected` : "all skills"}</div>
+          <div class="label">${localizeConfigCopy("Skills Filter")}</div>
+          <div>
+            ${skillFilter
+              ? isZhCnConfigCopy()
+                ? `${skillCount} 个已选`
+                : `${skillCount} selected`
+              : localizeConfigCopy("all skills")}
+          </div>
         </div>
       </div>
 
       ${configDirty
         ? html`
             <div class="callout warn" style="margin-top: 16px">
-              You have unsaved config changes.
+              ${localizeConfigCopy("You have unsaved config changes.")}
             </div>
           `
         : nothing}
 
       <div class="agent-model-select" style="margin-top: 20px;">
-        <div class="label">Model Selection</div>
+        <div class="label">${localizeConfigCopy("Model Selection")}</div>
         <div class="agent-model-fields">
           <label class="field">
-            <span>Primary model${isDefault ? " (default)" : ""}</span>
+            <span>
+              ${localizeConfigCopy("Primary model")}${isDefault
+                ? ` (${localizeConfigCopy("Default")})`
+                : ""}
+            </span>
             <select
               .value=${selectedPrimary ?? ""}
               ?disabled=${disabled}
@@ -154,10 +165,16 @@ export function renderAgentOverview(params: {
                 onModelChange(agent.id, (e.target as HTMLSelectElement).value || null)}
             >
               ${isDefault
-                ? html` <option value="" ?selected=${!selectedPrimary}>Not set</option> `
+                ? html`
+                    <option value="" ?selected=${!selectedPrimary}>
+                      ${localizeConfigCopy("Not set")}
+                    </option>
+                  `
                 : html`
                     <option value="" ?selected=${!selectedPrimary}>
-                      ${defaultPrimary ? `Inherit default (${defaultPrimary})` : "Inherit default"}
+                      ${defaultPrimary
+                        ? `${localizeConfigCopy("Inherit default")} (${defaultPrimary})`
+                        : localizeConfigCopy("Inherit default")}
                     </option>
                   `}
               ${buildModelOptions(
@@ -169,7 +186,7 @@ export function renderAgentOverview(params: {
             </select>
           </label>
           <div class="field">
-            <span>Fallbacks</span>
+            <span>${localizeConfigCopy("Fallbacks")}</span>
             <div
               class="agent-chip-input"
               @click=${(e: Event) => {
@@ -190,7 +207,7 @@ export function renderAgentOverview(params: {
                       ?disabled=${disabled}
                       @click=${() => removeChip(i)}
                     >
-                      &times;
+                      ×
                     </button>
                   </span>
                 `,
@@ -226,7 +243,7 @@ export function renderAgentOverview(params: {
             ?disabled=${configSaving || !configDirty}
             @click=${onConfigSave}
           >
-            ${configSaving ? "Saving…" : "Save"}
+            ${configSaving ? localizeConfigCopy("Saving…") : localizeConfigCopy("Save")}
           </button>
         </div>
       </div>

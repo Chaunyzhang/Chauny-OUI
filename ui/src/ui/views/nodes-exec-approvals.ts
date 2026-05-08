@@ -1,5 +1,6 @@
 import { html, nothing } from "lit";
 import { t } from "../../i18n/index.ts";
+import { localizeConfigCopy } from "../../i18n/lib/config-copy.ts";
 import type {
   ExecApprovalsAllowlistEntry,
   ExecApprovalsFile,
@@ -66,6 +67,14 @@ const ASK_OPTIONS: Array<{ value: ExecAsk; label: string }> = [
   { value: "on-miss", label: "On miss" },
   { value: "always", label: "Always" },
 ];
+
+function formatDefaultOption(value: string): string {
+  return `${localizeConfigCopy("Use default")} (${value})`;
+}
+
+function formatDefaultLine(value: string): string {
+  return `${localizeConfigCopy("Default:")} ${value}.`;
+}
 
 function normalizeSecurity(value?: string): ExecSecurity {
   if (value === "allowlist" || value === "full" || value === "deny") {
@@ -197,9 +206,10 @@ export function renderExecApprovals(state: ExecApprovalsState) {
     <section class="card">
       <div class="row" style="justify-content: space-between; align-items: center;">
         <div>
-          <div class="card-title">Exec approvals</div>
+          <div class="card-title">${localizeConfigCopy("Exec approvals")}</div>
           <div class="card-sub">
-            Allowlist and approval policy for <span class="mono">exec host=gateway/node</span>.
+            ${localizeConfigCopy("Allowlist and approval policy for")}
+            <span class="mono">${localizeConfigCopy("exec host=gateway/node")}</span>.
           </div>
         </div>
         <button
@@ -207,14 +217,16 @@ export function renderExecApprovals(state: ExecApprovalsState) {
           ?disabled=${state.disabled || !state.dirty || !targetReady}
           @click=${state.onSave}
         >
-          ${state.saving ? "Saving…" : "Save"}
+          ${state.saving ? localizeConfigCopy("Saving…") : localizeConfigCopy("Save")}
         </button>
       </div>
 
       ${renderExecApprovalsTarget(state)}
       ${!ready
         ? html`<div class="row" style="margin-top: 12px; gap: 12px;">
-            <div class="muted">Load exec approvals to edit allowlists.</div>
+            <div class="muted">
+              ${localizeConfigCopy("Load exec approvals to edit allowlists.")}
+            </div>
             <button class="btn" ?disabled=${state.loading || !targetReady} @click=${state.onLoad}>
               ${state.loading ? t("common.loading") : t("common.loadApprovals")}
             </button>
@@ -236,12 +248,14 @@ function renderExecApprovalsTarget(state: ExecApprovalsState) {
     <div class="list" style="margin-top: 12px;">
       <div class="list-item">
         <div class="list-main">
-          <div class="list-title">Target</div>
-          <div class="list-sub">Gateway edits local approvals; node edits the selected node.</div>
+          <div class="list-title">${localizeConfigCopy("Target")}</div>
+          <div class="list-sub">
+            ${localizeConfigCopy("Gateway edits local approvals; node edits the selected node.")}
+          </div>
         </div>
         <div class="list-meta">
           <label class="field">
-            <span>Host</span>
+            <span>${localizeConfigCopy("Host")}</span>
             <select
               ?disabled=${state.disabled}
               @change=${(event: Event) => {
@@ -255,14 +269,18 @@ function renderExecApprovalsTarget(state: ExecApprovalsState) {
                 }
               }}
             >
-              <option value="gateway" ?selected=${state.target === "gateway"}>Gateway</option>
-              <option value="node" ?selected=${state.target === "node"}>Node</option>
+              <option value="gateway" ?selected=${state.target === "gateway"}>
+                ${localizeConfigCopy("Gateway")}
+              </option>
+              <option value="node" ?selected=${state.target === "node"}>
+                ${localizeConfigCopy("Node")}
+              </option>
             </select>
           </label>
           ${state.target === "node"
             ? html`
                 <label class="field">
-                  <span>Node</span>
+                  <span>${localizeConfigCopy("Node")}</span>
                   <select
                     ?disabled=${state.disabled || !hasNodes}
                     @change=${(event: Event) => {
@@ -271,7 +289,9 @@ function renderExecApprovalsTarget(state: ExecApprovalsState) {
                       state.onSelectTarget("node", value ? value : null);
                     }}
                   >
-                    <option value="" ?selected=${nodeValue === ""}>Select node</option>
+                    <option value="" ?selected=${nodeValue === ""}>
+                      ${localizeConfigCopy("Select node")}
+                    </option>
                     ${state.targetNodes.map(
                       (node) =>
                         html`<option value=${node.id} ?selected=${nodeValue === node.id}>
@@ -285,7 +305,9 @@ function renderExecApprovalsTarget(state: ExecApprovalsState) {
         </div>
       </div>
       ${state.target === "node" && !hasNodes
-        ? html` <div class="muted">No nodes advertise exec approvals yet.</div> `
+        ? html`
+            <div class="muted">${localizeConfigCopy("No nodes advertise exec approvals yet.")}</div>
+          `
         : nothing}
     </div>
   `;
@@ -294,7 +316,7 @@ function renderExecApprovalsTarget(state: ExecApprovalsState) {
 function renderExecApprovalsTabs(state: ExecApprovalsState) {
   return html`
     <div class="row" style="margin-top: 12px; gap: 8px; flex-wrap: wrap;">
-      <span class="label">Scope</span>
+      <span class="label">${localizeConfigCopy("Scope")}</span>
       <div class="row" style="gap: 8px; flex-wrap: wrap;">
         <button
           class="btn btn--sm ${state.selectedScope === EXEC_APPROVALS_DEFAULT_SCOPE
@@ -302,7 +324,7 @@ function renderExecApprovalsTabs(state: ExecApprovalsState) {
             : ""}"
           @click=${() => state.onSelectScope(EXEC_APPROVALS_DEFAULT_SCOPE)}
         >
-          Defaults
+          ${localizeConfigCopy("Defaults")}
         </button>
         ${state.agents.map((agent) => {
           const label = agent.name?.trim() ? `${agent.name} (${agent.id})` : agent.id;
@@ -340,14 +362,16 @@ function renderExecApprovalsPolicy(state: ExecApprovalsState) {
     <div class="list" style="margin-top: 16px;">
       <div class="list-item">
         <div class="list-main">
-          <div class="list-title">Security</div>
+          <div class="list-title">${localizeConfigCopy("Security")}</div>
           <div class="list-sub">
-            ${isDefaults ? "Default security mode." : `Default: ${defaults.security}.`}
+            ${isDefaults
+              ? localizeConfigCopy("Default security mode.")
+              : formatDefaultLine(defaults.security)}
           </div>
         </div>
         <div class="list-meta">
           <label class="field">
-            <span>Mode</span>
+            <span>${localizeConfigCopy("Mode")}</span>
             <select
               ?disabled=${state.disabled}
               @change=${(event: Event) => {
@@ -362,13 +386,13 @@ function renderExecApprovalsPolicy(state: ExecApprovalsState) {
             >
               ${!isDefaults
                 ? html`<option value="__default__" ?selected=${securityValue === "__default__"}>
-                    Use default (${defaults.security})
+                    ${formatDefaultOption(defaults.security)}
                   </option>`
                 : nothing}
               ${SECURITY_OPTIONS.map(
                 (option) =>
                   html`<option value=${option.value} ?selected=${securityValue === option.value}>
-                    ${option.label}
+                    ${localizeConfigCopy(option.label)}
                   </option>`,
               )}
             </select>
@@ -378,14 +402,16 @@ function renderExecApprovalsPolicy(state: ExecApprovalsState) {
 
       <div class="list-item">
         <div class="list-main">
-          <div class="list-title">Ask</div>
+          <div class="list-title">${localizeConfigCopy("Ask")}</div>
           <div class="list-sub">
-            ${isDefaults ? "Default prompt policy." : `Default: ${defaults.ask}.`}
+            ${isDefaults
+              ? localizeConfigCopy("Default prompt policy.")
+              : formatDefaultLine(defaults.ask)}
           </div>
         </div>
         <div class="list-meta">
           <label class="field">
-            <span>Mode</span>
+            <span>${localizeConfigCopy("Mode")}</span>
             <select
               ?disabled=${state.disabled}
               @change=${(event: Event) => {
@@ -400,13 +426,13 @@ function renderExecApprovalsPolicy(state: ExecApprovalsState) {
             >
               ${!isDefaults
                 ? html`<option value="__default__" ?selected=${askValue === "__default__"}>
-                    Use default (${defaults.ask})
+                    ${formatDefaultOption(defaults.ask)}
                   </option>`
                 : nothing}
               ${ASK_OPTIONS.map(
                 (option) =>
                   html`<option value=${option.value} ?selected=${askValue === option.value}>
-                    ${option.label}
+                    ${localizeConfigCopy(option.label)}
                   </option>`,
               )}
             </select>
@@ -416,16 +442,16 @@ function renderExecApprovalsPolicy(state: ExecApprovalsState) {
 
       <div class="list-item">
         <div class="list-main">
-          <div class="list-title">Ask fallback</div>
+          <div class="list-title">${localizeConfigCopy("Ask fallback")}</div>
           <div class="list-sub">
             ${isDefaults
-              ? "Applied when the UI prompt is unavailable."
-              : `Default: ${defaults.askFallback}.`}
+              ? localizeConfigCopy("Applied when the UI prompt is unavailable.")
+              : formatDefaultLine(defaults.askFallback)}
           </div>
         </div>
         <div class="list-meta">
           <label class="field">
-            <span>Fallback</span>
+            <span>${localizeConfigCopy("Fallback")}</span>
             <select
               ?disabled=${state.disabled}
               @change=${(event: Event) => {
@@ -440,13 +466,13 @@ function renderExecApprovalsPolicy(state: ExecApprovalsState) {
             >
               ${!isDefaults
                 ? html`<option value="__default__" ?selected=${askFallbackValue === "__default__"}>
-                    Use default (${defaults.askFallback})
+                    ${formatDefaultOption(defaults.askFallback)}
                   </option>`
                 : nothing}
               ${SECURITY_OPTIONS.map(
                 (option) =>
                   html`<option value=${option.value} ?selected=${askFallbackValue === option.value}>
-                    ${option.label}
+                    ${localizeConfigCopy(option.label)}
                   </option>`,
               )}
             </select>
@@ -456,18 +482,18 @@ function renderExecApprovalsPolicy(state: ExecApprovalsState) {
 
       <div class="list-item">
         <div class="list-main">
-          <div class="list-title">Auto-allow skill CLIs</div>
+          <div class="list-title">${localizeConfigCopy("Auto-allow skill CLIs")}</div>
           <div class="list-sub">
             ${isDefaults
-              ? "Allow skill executables listed by the Gateway."
+              ? localizeConfigCopy("Allow skill executables listed by the Gateway.")
               : autoIsDefault
-                ? `Using default (${defaults.autoAllowSkills ? "on" : "off"}).`
-                : `Override (${autoEffective ? "on" : "off"}).`}
+                ? `${localizeConfigCopy("Using default")} (${defaults.autoAllowSkills ? localizeConfigCopy("on") : localizeConfigCopy("off")}).`
+                : `${localizeConfigCopy("Override")} (${autoEffective ? localizeConfigCopy("on") : localizeConfigCopy("off")}).`}
           </div>
         </div>
         <div class="list-meta">
           <label class="field">
-            <span>Enabled</span>
+            <span>${localizeConfigCopy("Enabled")}</span>
             <input
               type="checkbox"
               ?disabled=${state.disabled}
@@ -484,7 +510,7 @@ function renderExecApprovalsPolicy(state: ExecApprovalsState) {
                 ?disabled=${state.disabled}
                 @click=${() => state.onRemove([...basePath, "autoAllowSkills"])}
               >
-                Use default
+                ${localizeConfigCopy("Use default")}
               </button>`
             : nothing}
         </div>
@@ -499,8 +525,8 @@ function renderExecApprovalsAllowlist(state: ExecApprovalsState) {
   return html`
     <div class="row" style="margin-top: 18px; justify-content: space-between;">
       <div>
-        <div class="card-title">Allowlist</div>
-        <div class="card-sub">Case-insensitive glob patterns.</div>
+        <div class="card-title">${localizeConfigCopy("Allowlist")}</div>
+        <div class="card-sub">${localizeConfigCopy("Case-insensitive glob patterns.")}</div>
       </div>
       <button
         class="btn btn--sm"
@@ -510,12 +536,12 @@ function renderExecApprovalsAllowlist(state: ExecApprovalsState) {
           state.onPatch(allowlistPath, next);
         }}
       >
-        Add pattern
+        ${localizeConfigCopy("Add pattern")}
       </button>
     </div>
     <div class="list" style="margin-top: 12px;">
       ${entries.length === 0
-        ? html` <div class="muted">No allowlist entries yet.</div> `
+        ? html` <div class="muted">${localizeConfigCopy("No allowlist entries yet.")}</div> `
         : entries.map((entry, index) => renderAllowlistEntry(state, entry, index))}
     </div>
   `;
@@ -526,20 +552,24 @@ function renderAllowlistEntry(
   entry: ExecApprovalsAllowlistEntry,
   index: number,
 ) {
-  const lastUsed = entry.lastUsedAt ? formatRelativeTimestamp(entry.lastUsedAt) : "never";
+  const lastUsed = entry.lastUsedAt
+    ? formatRelativeTimestamp(entry.lastUsedAt)
+    : localizeConfigCopy("never");
   const lastCommand = entry.lastUsedCommand ? clampText(entry.lastUsedCommand, 120) : null;
   const lastPath = entry.lastResolvedPath ? clampText(entry.lastResolvedPath, 120) : null;
   return html`
     <div class="list-item">
       <div class="list-main">
-        <div class="list-title">${entry.pattern?.trim() ? entry.pattern : "New pattern"}</div>
-        <div class="list-sub">Last used: ${lastUsed}</div>
+        <div class="list-title">
+          ${entry.pattern?.trim() ? entry.pattern : localizeConfigCopy("New pattern")}
+        </div>
+        <div class="list-sub">${localizeConfigCopy("Last used:")} ${lastUsed}</div>
         ${lastCommand ? html`<div class="list-sub mono">${lastCommand}</div>` : nothing}
         ${lastPath ? html`<div class="list-sub mono">${lastPath}</div>` : nothing}
       </div>
       <div class="list-meta">
         <label class="field">
-          <span>Pattern</span>
+          <span>${localizeConfigCopy("Pattern")}</span>
           <input
             type="text"
             .value=${entry.pattern ?? ""}
@@ -564,7 +594,7 @@ function renderAllowlistEntry(
             state.onRemove(["agents", state.selectedScope, "allowlist", index]);
           }}
         >
-          Remove
+          ${localizeConfigCopy("Remove")}
         </button>
       </div>
     </div>

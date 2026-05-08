@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { t } from "../../i18n/index.ts";
+import { localizeConfigCopy } from "../../i18n/lib/config-copy.ts";
 import type {
   DreamingEntry,
   WikiImportInsights,
@@ -481,15 +482,15 @@ function basename(value: string): string {
 function formatKindLabel(kind: "entity" | "concept" | "source" | "synthesis" | "report"): string {
   switch (kind) {
     case "entity":
-      return "entity";
+      return localizeConfigCopy("entity");
     case "concept":
-      return "concept";
+      return localizeConfigCopy("concept");
     case "source":
-      return "source";
+      return localizeConfigCopy("source");
     case "synthesis":
-      return "synthesis";
+      return localizeConfigCopy("synthesis");
     case "report":
-      return "report";
+      return localizeConfigCopy("report");
   }
   return kind;
 }
@@ -499,19 +500,19 @@ function formatImportBadge(item: {
   riskLevel: "low" | "medium" | "high" | "unknown";
 }): string {
   if (item.digestStatus === "withheld") {
-    return "needs review";
+    return localizeConfigCopy("needs review");
   }
   switch (item.riskLevel) {
     case "low":
-      return "low risk";
+      return localizeConfigCopy("low risk");
     case "medium":
-      return "medium risk";
+      return localizeConfigCopy("medium risk");
     case "high":
-      return "high risk";
+      return localizeConfigCopy("high risk");
     case "unknown":
-      return "unknown risk";
+      return localizeConfigCopy("unknown risk");
   }
-  return "unknown risk";
+  return localizeConfigCopy("unknown risk");
 }
 
 function toggleExpandedCard(bucket: Set<string>, key: string, requestUpdate?: () => void): void {
@@ -537,7 +538,7 @@ async function openWikiPreview(lookup: string, props: DreamingProps): Promise<vo
   try {
     const preview = await props.onOpenWikiPage(lookup);
     if (!preview) {
-      _wikiPreviewError = `No wiki page found for ${lookup}.`;
+      _wikiPreviewError = `${localizeConfigCopy("No wiki page found for")} ${lookup}.`;
       return;
     }
     _wikiPreviewTitle = preview.title;
@@ -579,7 +580,9 @@ function renderWikiPreviewOverlay(props: DreamingProps) {
       <div class="dreams-diary__preview-panel" @click=${(event: Event) => event.stopPropagation()}>
         <div class="dreams-diary__preview-header">
           <div>
-            <div class="dreams-diary__preview-title">${_wikiPreviewTitle || "Wiki page"}</div>
+            <div class="dreams-diary__preview-title">
+              ${_wikiPreviewTitle || localizeConfigCopy("Wiki page")}
+            </div>
             <div class="dreams-diary__preview-meta">
               ${_wikiPreviewPath} ${_wikiPreviewUpdatedAt ? ` · ${_wikiPreviewUpdatedAt}` : ""}
             </div>
@@ -588,22 +591,25 @@ function renderWikiPreviewOverlay(props: DreamingProps) {
             class="btn btn--subtle btn--sm"
             @click=${() => closeWikiPreview(props.onRequestUpdate)}
           >
-            Close
+            ${localizeConfigCopy("Close")}
           </button>
         </div>
         <div class="dreams-diary__preview-body">
           ${_wikiPreviewLoading
-            ? html`<div class="dreams-diary__empty-text">Loading wiki page…</div>`
+            ? html`<div class="dreams-diary__empty-text">
+                ${localizeConfigCopy("Loading wiki page…")}
+              </div>`
             : _wikiPreviewError
               ? html`<div class="dreams-diary__error">${_wikiPreviewError}</div>`
               : html`
                   ${_wikiPreviewTruncated
                     ? html`
                         <div class="dreams-diary__preview-hint">
-                          Showing the first chunk of this
-                          page${_wikiPreviewTotalLines !== null
-                            ? ` (${_wikiPreviewTotalLines} total lines)`
-                            : ""}.
+                          ${_wikiPreviewTotalLines !== null
+                            ? localizeConfigCopy(
+                                "Showing the first chunk of this page ({count} total lines).",
+                              ).replace("{count}", String(_wikiPreviewTotalLines))
+                            : localizeConfigCopy("Showing the first chunk of this page.")}
                         </div>
                       `
                     : nothing}
@@ -620,24 +626,25 @@ function renderDiarySubtabExplainer() {
     case "dreams":
       return html`
         <p class="dreams-diary__explainer">
-          This is the raw dream diary the system writes while replaying and consolidating memory;
-          use it to inspect what the memory system is noticing, and where it still looks noisy or
-          thin.
+          ${localizeConfigCopy(
+            "This is the raw dream diary the system writes while replaying and consolidating memory; use it to inspect what the memory system is noticing, and where it still looks noisy or thin.",
+          )}
         </p>
       `;
     case "insights":
       return html`
         <p class="dreams-diary__explainer">
-          These are imported insights clustered from external history; use them to review what
-          imports surfaced before any of it graduates into durable memory.
+          ${localizeConfigCopy(
+            "These are imported insights clustered from external history; use them to review what imports surfaced before any of it graduates into durable memory.",
+          )}
         </p>
       `;
     case "palace":
       return html`
         <p class="dreams-diary__explainer">
-          This is the compiled memory wiki surface the system can search and reason over; use it to
-          inspect actual memory pages, claims, open questions, and contradictions rather than raw
-          imported source chats.
+          ${localizeConfigCopy(
+            "This is the compiled memory wiki surface the system can search and reason over; use it to inspect actual memory pages, claims, open questions, and contradictions rather than raw imported source chats.",
+          )}
         </p>
       `;
   }
@@ -825,7 +832,7 @@ function renderAdvancedSection(props: DreamingProps) {
                         ?disabled=${props.dreamDiaryActionLoading}
                         @click=${() => props.onCopyDreamingArchivePath()}
                       >
-                        Copy archive path
+                        ${localizeConfigCopy("Copy archive path")}
                       </button>
                     `
                   : nothing}
@@ -934,7 +941,9 @@ function renderDiaryImportsSection(props: DreamingProps) {
   if (props.wikiImportInsightsLoading && clusters.length === 0) {
     return html`
       <div class="dreams-diary__empty">
-        <div class="dreams-diary__empty-text">Loading imported insights…</div>
+        <div class="dreams-diary__empty-text">
+          ${localizeConfigCopy("Loading imported insights…")}
+        </div>
       </div>
     `;
   }
@@ -942,9 +951,13 @@ function renderDiaryImportsSection(props: DreamingProps) {
   if (clusters.length === 0) {
     return html`
       <div class="dreams-diary__empty">
-        <div class="dreams-diary__empty-text">No imported insights yet</div>
+        <div class="dreams-diary__empty-text">
+          ${localizeConfigCopy("No imported insights yet")}
+        </div>
         <div class="dreams-diary__empty-hint">
-          Run a ChatGPT import with apply to surface clustered imported insights here.
+          ${localizeConfigCopy(
+            "Run a ChatGPT import with apply to surface clustered imported insights here.",
+          )}
         </div>
       </div>
     `;
@@ -984,9 +997,11 @@ function renderDiaryImportsSection(props: DreamingProps) {
       </div>
       <div class="dreams-diary__prose">
         <p class="dreams-diary__para">
-          Imported chats clustered around ${cluster.label.toLowerCase()}.
+          ${localizeConfigCopy("Imported chats clustered around")} ${cluster.label.toLowerCase()}.
           ${cluster.withheldCount > 0
-            ? ` ${cluster.withheldCount} digest${cluster.withheldCount === 1 ? " was" : "s were"} withheld pending review.`
+            ? localizeConfigCopy("{count} digest{plural} withheld pending review.")
+                .replace("{count}", String(cluster.withheldCount))
+                .replace("{plural}", cluster.withheldCount === 1 ? "" : "s")
             : ""}
         </p>
       </div>
@@ -1016,7 +1031,7 @@ function renderDiaryImportsSection(props: DreamingProps) {
               ${item.candidateSignals.length > 0
                 ? html`
                     <div class="dreams-diary__insight-list">
-                      <strong>Potentially useful signals</strong>
+                      <strong>${localizeConfigCopy("Potentially useful signals")}</strong>
                       ${item.candidateSignals.map(
                         (signal) => html`<p class="dreams-diary__insight-line">• ${signal}</p>`,
                       )}
@@ -1026,7 +1041,7 @@ function renderDiaryImportsSection(props: DreamingProps) {
               ${item.correctionSignals.length > 0
                 ? html`
                     <div class="dreams-diary__insight-list">
-                      <strong>Corrections or revisions</strong>
+                      <strong>${localizeConfigCopy("Corrections or revisions")}</strong>
                       ${item.correctionSignals.map(
                         (signal) => html`<p class="dreams-diary__insight-line">• ${signal}</p>`,
                       )}
@@ -1036,36 +1051,40 @@ function renderDiaryImportsSection(props: DreamingProps) {
               ${expanded
                 ? html`
                     <div class="dreams-diary__insight-list">
-                      <strong>Import details</strong>
+                      <strong>${localizeConfigCopy("Import details")}</strong>
                       ${item.firstUserLine
                         ? html`
                             <p class="dreams-diary__insight-line">
-                              <strong>Started with:</strong> ${item.firstUserLine}
+                              <strong>${localizeConfigCopy("Started with:")}</strong>
+                              ${item.firstUserLine}
                             </p>
                           `
                         : nothing}
                       ${item.lastUserLine && item.lastUserLine !== item.firstUserLine
                         ? html`
                             <p class="dreams-diary__insight-line">
-                              <strong>Ended on:</strong> ${item.lastUserLine}
+                              <strong>${localizeConfigCopy("Ended on:")}</strong>
+                              ${item.lastUserLine}
                             </p>
                           `
                         : nothing}
                       <p class="dreams-diary__insight-line">
-                        <strong>Messages:</strong> ${item.userMessageCount} user ·
-                        ${item.assistantMessageCount} assistant
+                        <strong>${localizeConfigCopy("Messages:")}</strong>
+                        ${item.userMessageCount} user · ${item.assistantMessageCount} assistant
                       </p>
                       ${item.riskReasons.length > 0
                         ? html`
                             <p class="dreams-diary__insight-line">
-                              <strong>Risk reasons:</strong> ${item.riskReasons.join(", ")}
+                              <strong>${localizeConfigCopy("Risk reasons:")}</strong>
+                              ${item.riskReasons.join(", ")}
                             </p>
                           `
                         : nothing}
                       ${item.labels.length > 0
                         ? html`
                             <p class="dreams-diary__insight-line">
-                              <strong>Labels:</strong> ${item.labels.join(", ")}
+                              <strong>${localizeConfigCopy("Labels:")}</strong>
+                              ${item.labels.join(", ")}
                             </p>
                           `
                         : nothing}
@@ -1090,7 +1109,7 @@ function renderDiaryImportsSection(props: DreamingProps) {
                     toggleExpandedCard(_expandedInsightCards, item.pagePath, props.onRequestUpdate);
                   }}
                 >
-                  ${expanded ? "Hide details" : "Details"}
+                  ${expanded ? localizeConfigCopy("Hide details") : localizeConfigCopy("Details")}
                 </button>
                 <button
                   class="btn btn--subtle btn--sm"
@@ -1099,7 +1118,7 @@ function renderDiaryImportsSection(props: DreamingProps) {
                     void openWikiPreview(item.pagePath, props);
                   }}
                 >
-                  Open source page
+                  ${localizeConfigCopy("Open source page")}
                 </button>
               </div>
             </article>
@@ -1117,7 +1136,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
   if (props.wikiMemoryPalaceLoading && clusters.length === 0) {
     return html`
       <div class="dreams-diary__empty">
-        <div class="dreams-diary__empty-text">Loading memory palace…</div>
+        <div class="dreams-diary__empty-text">${localizeConfigCopy("Loading memory palace…")}</div>
       </div>
     `;
   }
@@ -1125,10 +1144,13 @@ function renderMemoryPalaceSection(props: DreamingProps) {
   if (clusters.length === 0) {
     return html`
       <div class="dreams-diary__empty">
-        <div class="dreams-diary__empty-text">Memory palace is not populated yet</div>
+        <div class="dreams-diary__empty-text">
+          ${localizeConfigCopy("Memory palace is not populated yet")}
+        </div>
         <div class="dreams-diary__empty-hint">
-          Right now the wiki mostly has raw source imports and operational reports. This tab becomes
-          useful once syntheses, entities, or concepts start getting written.
+          ${localizeConfigCopy(
+            "Right now the wiki mostly has raw source imports and operational reports. This tab becomes useful once syntheses, entities, or concepts start getting written.",
+          )}
         </div>
       </div>
     `;
@@ -1169,8 +1191,11 @@ function renderMemoryPalaceSection(props: DreamingProps) {
       </div>
       <div class="dreams-diary__prose">
         <p class="dreams-diary__para">
-          Compiled wiki pages currently grouped under ${cluster.label.toLowerCase()}.
-          ${cluster.updatedAt ? ` Latest update ${formatCompactDateTime(cluster.updatedAt)}.` : ""}
+          ${localizeConfigCopy("Compiled wiki pages currently grouped under")}
+          ${cluster.label.toLowerCase()}.
+          ${cluster.updatedAt
+            ? `${localizeConfigCopy("Latest update")} ${formatCompactDateTime(cluster.updatedAt)}.`
+            : ""}
         </p>
       </div>
       <div class="dreams-diary__insights">
@@ -1199,7 +1224,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
               ${item.claims.length > 0
                 ? html`
                     <div class="dreams-diary__insight-list">
-                      <strong>Claims</strong>
+                      <strong>${localizeConfigCopy("Claims")}</strong>
                       ${item.claims.map(
                         (claim) => html`<p class="dreams-diary__insight-line">• ${claim}</p>`,
                       )}
@@ -1209,7 +1234,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
               ${item.questions.length > 0
                 ? html`
                     <div class="dreams-diary__insight-list">
-                      <strong>Open questions</strong>
+                      <strong>${localizeConfigCopy("Open questions")}</strong>
                       ${item.questions.map(
                         (question) => html`<p class="dreams-diary__insight-line">• ${question}</p>`,
                       )}
@@ -1219,7 +1244,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
               ${item.contradictions.length > 0
                 ? html`
                     <div class="dreams-diary__insight-list">
-                      <strong>Contradictions</strong>
+                      <strong>${localizeConfigCopy("Contradictions")}</strong>
                       ${item.contradictions.map(
                         (entry) => html`<p class="dreams-diary__insight-line">• ${entry}</p>`,
                       )}
@@ -1229,14 +1254,14 @@ function renderMemoryPalaceSection(props: DreamingProps) {
               ${expanded
                 ? html`
                     <div class="dreams-diary__insight-list">
-                      <strong>Page details</strong>
+                      <strong>${localizeConfigCopy("Page details")}</strong>
                       <p class="dreams-diary__insight-line">
-                        <strong>Wiki page:</strong> ${item.pagePath}
+                        <strong>${localizeConfigCopy("Wiki page:")}</strong> ${item.pagePath}
                       </p>
                       ${item.id
                         ? html`
                             <p class="dreams-diary__insight-line">
-                              <strong>Id:</strong> ${item.id}
+                              <strong>${localizeConfigCopy("Id:")}</strong> ${item.id}
                             </p>
                           `
                         : nothing}
@@ -1251,7 +1276,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
                     toggleExpandedCard(_expandedPalaceCards, item.pagePath, props.onRequestUpdate);
                   }}
                 >
-                  ${expanded ? "Hide details" : "Details"}
+                  ${expanded ? localizeConfigCopy("Hide details") : localizeConfigCopy("Details")}
                 </button>
                 <button
                   class="btn btn--subtle btn--sm"
@@ -1260,7 +1285,7 @@ function renderMemoryPalaceSection(props: DreamingProps) {
                     void openWikiPreview(item.pagePath, props);
                   }}
                 >
-                  Open wiki page
+                  ${localizeConfigCopy("Open wiki page")}
                 </button>
               </div>
             </article>
@@ -1372,7 +1397,7 @@ function renderDiarySection(props: DreamingProps) {
                 props.onRequestUpdate?.();
               }}
             >
-              Dreams
+              ${localizeConfigCopy("Dreams")}
             </button>
             <button
               class="dreams-diary__subtab ${_diarySubTab === "insights"
@@ -1385,7 +1410,7 @@ function renderDiarySection(props: DreamingProps) {
                 props.onRequestUpdate?.();
               }}
             >
-              Imported Insights
+              ${localizeConfigCopy("Imported Insights")}
             </button>
             <button
               class="dreams-diary__subtab ${_diarySubTab === "palace"
@@ -1398,7 +1423,7 @@ function renderDiarySection(props: DreamingProps) {
                 props.onRequestUpdate?.();
               }}
             >
-              Memory Palace
+              ${localizeConfigCopy("Memory Palace")}
             </button>
           </div>
           <button
@@ -1425,18 +1450,18 @@ function renderDiarySection(props: DreamingProps) {
             }}
           >
             ${memoryWikiUnavailable
-              ? "How to enable"
+              ? localizeConfigCopy("How to enable")
               : _diarySubTab === "dreams"
                 ? props.dreamDiaryLoading
                   ? t("dreaming.diary.reloading")
                   : t("dreaming.diary.reload")
                 : _diarySubTab === "insights"
                   ? props.wikiImportInsightsLoading
-                    ? "Reloading…"
-                    : "Reload"
+                    ? localizeConfigCopy("Reloading…")
+                    : localizeConfigCopy("Reload")
                   : props.wikiMemoryPalaceLoading
-                    ? "Reloading…"
-                    : "Reload"}
+                    ? localizeConfigCopy("Reloading…")
+                    : localizeConfigCopy("Reload")}
           </button>
         </div>
         ${renderDiarySubtabExplainer()}
@@ -1445,18 +1470,23 @@ function renderDiarySection(props: DreamingProps) {
       ${memoryWikiUnavailable
         ? html`
             <div class="dreams-diary__empty">
-              <div class="dreams-diary__empty-text">Memory Wiki is not enabled</div>
-              <div class="dreams-diary__empty-hint">
-                Imported Insights and Memory Palace are provided by the bundled
-                <code>memory-wiki</code> plugin.
+              <div class="dreams-diary__empty-text">
+                ${localizeConfigCopy("Memory Wiki is not enabled")}
               </div>
               <div class="dreams-diary__empty-hint">
-                Enable <code>plugins.entries.memory-wiki.enabled = true</code>, then reload this
-                tab.
+                ${localizeConfigCopy(
+                  "Imported Insights and Memory Palace are provided by the bundled",
+                )}
+                <code>memory-wiki</code> ${localizeConfigCopy("plugin.")}
+              </div>
+              <div class="dreams-diary__empty-hint">
+                ${localizeConfigCopy("Enable")}
+                <code>plugins.entries.memory-wiki.enabled = true</code>,
+                ${localizeConfigCopy("then reload this tab.")}
               </div>
               <div class="dreams-diary__empty-actions">
                 <button class="btn btn--subtle btn--sm" @click=${() => props.onOpenConfig()}>
-                  Open Config
+                  ${localizeConfigCopy("Open Config")}
                 </button>
               </div>
             </div>

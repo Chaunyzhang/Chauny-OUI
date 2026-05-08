@@ -1,5 +1,6 @@
 import { html, nothing } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
+import { localizeConfigCopy } from "../../i18n/lib/config-copy.ts";
 import { resolveCanvasIframeUrl } from "../canvas-url.ts";
 import { resolveEmbedSandbox, type EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
@@ -30,17 +31,17 @@ export function renderMarkdownSidebar(props: MarkdownSidebarProps) {
       <div class="sidebar-header">
         <div class="sidebar-title">
           ${content?.kind === "canvas"
-            ? content.title?.trim() || "Render Preview"
+            ? content.title?.trim() || localizeConfigCopy("Render Preview")
             : content?.kind === "markdown"
-              ? "Markdown Preview"
-              : "Tool Details"}
+              ? localizeConfigCopy("Markdown Preview")
+              : localizeConfigCopy("Tool Details")}
         </div>
         <button
           @click=${props.onClose}
           class="btn"
           type="button"
-          title="Close sidebar"
-          aria-label="Close sidebar"
+          title=${localizeConfigCopy("Close sidebar")}
+          aria-label=${localizeConfigCopy("Close sidebar")}
         >
           ${icons.x}
         </button>
@@ -55,7 +56,7 @@ export function renderMarkdownSidebar(props: MarkdownSidebarProps) {
                 type="button"
                 style="margin-top: 12px;"
               >
-                View Raw Text
+                ${localizeConfigCopy("View Raw Text")}
               </button>
             `
           : content
@@ -65,7 +66,7 @@ export function renderMarkdownSidebar(props: MarkdownSidebarProps) {
                     <div class="chat-tool-card__preview-panel" data-side="front">
                       <iframe
                         class="chat-tool-card__preview-frame"
-                        title=${content.title?.trim() || "Render preview"}
+                        title=${content.title?.trim() || localizeConfigCopy("Render preview")}
                         sandbox=${resolveSidebarCanvasSandbox(
                           content,
                           props.embedSandboxMode ?? "scripts",
@@ -84,7 +85,7 @@ export function renderMarkdownSidebar(props: MarkdownSidebarProps) {
                       ? html`
                           <div style="margin-top: 12px;">
                             <button @click=${props.onViewRawText} class="btn" type="button">
-                              View Raw Text
+                              ${localizeConfigCopy("View Raw Text")}
                             </button>
                           </div>
                         `
@@ -97,14 +98,14 @@ export function renderMarkdownSidebar(props: MarkdownSidebarProps) {
                       <div class="sidebar-markdown-shell__intro">
                         <div class="sidebar-markdown-shell__eyebrow">
                           ${icons.scrollText}
-                          <span>Rendered Markdown</span>
+                          <span>${localizeConfigCopy("Rendered Markdown")}</span>
                         </div>
                         <div class="sidebar-markdown-shell__hint">
-                          Sanitized rich-text preview for quick reading.
+                          ${localizeConfigCopy("Sanitized rich-text preview for quick reading.")}
                         </div>
                       </div>
                       <button @click=${props.onViewRawText} class="btn btn--sm" type="button">
-                        View Raw Text
+                        ${localizeConfigCopy("View Raw Text")}
                       </button>
                     </div>
                     <article class="sidebar-markdown-reader sidebar-markdown">
@@ -112,7 +113,7 @@ export function renderMarkdownSidebar(props: MarkdownSidebarProps) {
                     </article>
                   </section>
                 `
-            : html` <div class="muted">No content available</div> `}
+            : html` <div class="muted">${localizeConfigCopy("No content available")}</div> `}
       </div>
     </div>
   `;

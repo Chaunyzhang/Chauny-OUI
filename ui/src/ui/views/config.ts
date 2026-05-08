@@ -1,6 +1,18 @@
 import JSON5 from "json5";
 import { html, nothing, type TemplateResult } from "lit";
 import { t } from "../../i18n/index.ts";
+import {
+  formatConfigClearTheme,
+  formatConfigImportedThemeDescription,
+  formatConfigItemCount,
+  formatConfigOpenTitle,
+  formatConfigPendingChanges,
+  formatConfigReplaceTheme,
+  formatConfigSensitiveHidden,
+  formatConfigSensitiveSummary,
+  formatConfigUnsavedChanges,
+  localizeConfigCopy,
+} from "../../i18n/lib/config-copy.ts";
 import { icons } from "../icons.ts";
 import { BORDER_RADIUS_STOPS, type BorderRadiusStop } from "../storage.ts";
 import type { ThemeTransitionContext } from "../theme-transition.ts";
@@ -452,7 +464,7 @@ const SECTION_CATEGORIES: SectionCategory[] = [
   },
   {
     id: "appearance",
-    label: t("tabs.appearance"),
+    label: "Appearance",
     sections: [
       { key: "__appearance__", label: "Theme" },
       { key: "ui", label: "UI" },
@@ -523,11 +535,14 @@ function resolveSectionMeta(
 } {
   const meta = SECTION_META[key];
   if (meta) {
-    return meta;
+    return {
+      label: localizeConfigCopy(meta.label),
+      description: localizeConfigCopy(meta.description),
+    };
   }
   return {
-    label: schema?.title ?? humanize(key),
-    description: schema?.description ?? "",
+    label: localizeConfigCopy(schema?.title ?? humanize(key)),
+    description: localizeConfigCopy(schema?.description ?? ""),
   };
 }
 
@@ -708,7 +723,7 @@ function computeRawDiff(original: string, current: string): ConfigDiffEntry[] {
 
 function truncateValue(value: unknown, maxLen = 40): string {
   if (Array.isArray(value)) {
-    return `[${value.length} item${value.length === 1 ? "" : "s"}]`;
+    return `[${formatConfigItemCount(value.length)}]`;
   }
   let str: string;
   try {
@@ -729,7 +744,7 @@ function renderDiffValue(path: ConfigDiffPath, value: unknown, _uiHints: ConfigU
     value != null &&
     truncateValue(value).trim() !== ""
   ) {
-    return REDACTED_PLACEHOLDER;
+    return localizeConfigCopy(REDACTED_PLACEHOLDER);
   }
   return truncateValue(value);
 }
@@ -771,7 +786,7 @@ function renderRawDiffValue(
 ): string {
   const hasSensitiveValue = countSensitiveConfigValues(value, path, uiHints) > 0;
   if (!rawRevealed && value != null && (isSensitiveDiffPath(path, uiHints) || hasSensitiveValue)) {
-    return REDACTED_PLACEHOLDER;
+    return localizeConfigCopy(REDACTED_PLACEHOLDER);
   }
   return truncateValue(value);
 }
@@ -789,7 +804,9 @@ const BUILTIN_THEME_OPTIONS: ThemeOption[] = [
 ];
 
 function importedThemeName(props: Pick<ConfigProps, "hasCustomTheme" | "customThemeLabel">) {
-  return props.hasCustomTheme && props.customThemeLabel ? props.customThemeLabel : "Imported theme";
+  return props.hasCustomTheme && props.customThemeLabel
+    ? props.customThemeLabel
+    : localizeConfigCopy("Imported theme");
 }
 
 function focusCustomThemeImportInput() {
@@ -818,8 +835,10 @@ function renderNotificationsSection(props: ConfigProps) {
     return html`
       <div class="settings-appearance">
         <div class="settings-appearance__section">
-          <h3 class="settings-appearance__heading">Push Notifications</h3>
-          <p class="settings-appearance__hint">Not available in this browser.</p>
+          <h3 class="settings-appearance__heading">${localizeConfigCopy("Push Notifications")}</h3>
+          <p class="settings-appearance__hint">
+            ${localizeConfigCopy("Not available in this browser.")}
+          </p>
         </div>
       </div>
     `;
@@ -827,38 +846,44 @@ function renderNotificationsSection(props: ConfigProps) {
 
   const permissionLabel =
     push.permission === "granted"
-      ? "Granted"
+      ? localizeConfigCopy("Granted")
       : push.permission === "denied"
-        ? "Denied"
+        ? localizeConfigCopy("Denied")
         : push.permission === "default"
-          ? "Not requested"
-          : "Unsupported";
+          ? localizeConfigCopy("Not requested")
+          : localizeConfigCopy("Unsupported");
   const statusDot = push.subscribed ? "settings-status-dot--ok" : "";
 
   return html`
     <div class="settings-appearance">
       <div class="settings-appearance__section">
-        <h3 class="settings-appearance__heading">Push Notifications</h3>
+        <h3 class="settings-appearance__heading">${localizeConfigCopy("Push Notifications")}</h3>
         <p class="settings-appearance__hint">
-          Subscribe to receive browser push notifications from your gateway.
+          ${localizeConfigCopy(
+            "Subscribe to receive browser push notifications from your gateway.",
+          )}
         </p>
 
         <div class="settings-info-grid">
           <div class="settings-info-row">
-            <span class="settings-info-row__label">Browser support</span>
+            <span class="settings-info-row__label">${localizeConfigCopy("Browser support")}</span>
             <span class="settings-info-row__value"
-              >${push.supported ? "Available" : "Not supported"}</span
+              >${push.supported
+                ? localizeConfigCopy("Available")
+                : localizeConfigCopy("Not supported")}</span
             >
           </div>
           <div class="settings-info-row">
-            <span class="settings-info-row__label">Permission</span>
+            <span class="settings-info-row__label">${localizeConfigCopy("Permission")}</span>
             <span class="settings-info-row__value">${permissionLabel}</span>
           </div>
           <div class="settings-info-row">
-            <span class="settings-info-row__label">Status</span>
+            <span class="settings-info-row__label">${localizeConfigCopy("Status")}</span>
             <span class="settings-info-row__value">
               <span class="settings-status-dot ${statusDot}"></span>
-              ${push.subscribed ? "Subscribed" : "Not subscribed"}
+              ${push.subscribed
+                ? localizeConfigCopy("Subscribed")
+                : localizeConfigCopy("Not subscribed")}
             </span>
           </div>
         </div>
@@ -875,14 +900,14 @@ function renderNotificationsSection(props: ConfigProps) {
                         ?disabled=${push.loading || !props.connected}
                         @click=${() => props.onWebPushUnsubscribe?.()}
                       >
-                        Unsubscribe
+                        ${localizeConfigCopy("Unsubscribe")}
                       </button>
                       <button
                         class="config-bar__btn"
                         ?disabled=${push.loading || !props.connected}
                         @click=${() => props.onWebPushTest?.()}
                       >
-                        Send test
+                        ${localizeConfigCopy("Send test")}
                       </button>
                     `
                   : html`
@@ -891,7 +916,9 @@ function renderNotificationsSection(props: ConfigProps) {
                         ?disabled=${push.loading || !props.connected}
                         @click=${() => props.onWebPushSubscribe?.()}
                       >
-                        ${push.loading ? "Subscribing..." : "Enable notifications"}
+                        ${push.loading
+                          ? localizeConfigCopy("Subscribing...")
+                          : localizeConfigCopy("Enable notifications")}
                       </button>
                     `}
               </div>
@@ -901,8 +928,9 @@ function renderNotificationsSection(props: ConfigProps) {
           ? html`
               <div class="settings-appearance__section">
                 <p class="settings-appearance__hint">
-                  Notifications are blocked. Update your browser site permissions to allow
-                  notifications.
+                  ${localizeConfigCopy(
+                    "Notifications are blocked. Update your browser site permissions to allow notifications.",
+                  )}
                 </p>
               </div>
             `
@@ -926,18 +954,18 @@ function renderAppearanceSection(props: ConfigProps) {
     ...BUILTIN_THEME_OPTIONS,
     {
       id: "custom",
-      label: props.hasCustomTheme ? importedName : "Import",
+      label: props.hasCustomTheme ? importedName : localizeConfigCopy("Import"),
       description: props.hasCustomTheme
-        ? `Imported from tweakcn: ${importedName}`
-        : "Import a tweakcn theme into this browser-local slot",
+        ? formatConfigImportedThemeDescription(importedName)
+        : localizeConfigCopy("Import a tweakcn theme into this browser-local slot"),
       icon: icons.spark,
     },
   ];
   return html`
     <div class="settings-appearance">
       <div class="settings-appearance__section">
-        <h3 class="settings-appearance__heading">Theme</h3>
-        <p class="settings-appearance__hint">Choose a theme family.</p>
+        <h3 class="settings-appearance__heading">${localizeConfigCopy("Theme")}</h3>
+        <p class="settings-appearance__hint">${localizeConfigCopy("Choose a theme family.")}</p>
         <div class="settings-theme-grid">
           ${themeOptions.map(
             (opt) => html`
@@ -945,7 +973,7 @@ function renderAppearanceSection(props: ConfigProps) {
                 class="settings-theme-card ${opt.id === props.theme
                   ? "settings-theme-card--active"
                   : ""}"
-                title=${opt.description}
+                title=${localizeConfigCopy(opt.description)}
                 @click=${(e: Event) => {
                   if (opt.id === "custom" && !props.hasCustomTheme) {
                     props.onOpenCustomThemeImport?.();
@@ -974,11 +1002,13 @@ function renderAppearanceSection(props: ConfigProps) {
           ? html`
               <div class="settings-theme-import">
                 <div class="settings-theme-import__copy">
-                  <div class="settings-theme-import__title">Import from tweakcn</div>
+                  <div class="settings-theme-import__title">
+                    ${localizeConfigCopy("Import from tweakcn")}
+                  </div>
                   <p class="settings-theme-import__hint">
-                    Open tweakcn.com, choose or create a theme, click Share, then paste the copied
-                    theme link here. Share links, editor URLs, registry URLs, theme IDs, and default
-                    theme names like amethyst-haze are accepted.
+                    ${localizeConfigCopy(
+                      "Open tweakcn.com, choose or create a theme, click Share, then paste the copied theme link here. Share links, editor URLs, registry URLs, theme IDs, and default theme names like amethyst-haze are accepted.",
+                    )}
                   </p>
                 </div>
                 <a
@@ -987,10 +1017,12 @@ function renderAppearanceSection(props: ConfigProps) {
                   target="_blank"
                   rel="noreferrer noopener"
                 >
-                  Browse tweakcn themes ${icons.externalLink}
+                  ${localizeConfigCopy("Browse tweakcn themes")} ${icons.externalLink}
                 </a>
                 <label class="settings-theme-import__field">
-                  <span class="settings-theme-import__label">Theme link or ID</span>
+                  <span class="settings-theme-import__label">
+                    ${localizeConfigCopy("Theme link or ID")}
+                  </span>
                   <input
                     class="settings-theme-import__input"
                     data-custom-theme-import-input
@@ -1012,15 +1044,15 @@ function renderAppearanceSection(props: ConfigProps) {
                     @click=${props.onImportCustomTheme}
                   >
                     ${props.customThemeImportBusy
-                      ? "Importing…"
+                      ? localizeConfigCopy("Importing…")
                       : props.hasCustomTheme
-                        ? `Replace ${importedName}`
-                        : "Import theme"}
+                        ? formatConfigReplaceTheme(importedName)
+                        : localizeConfigCopy("Import theme")}
                   </button>
                   ${props.hasCustomTheme
                     ? html`
                         <button class="btn btn--sm danger" @click=${props.onClearCustomTheme}>
-                          Clear ${importedName}
+                          ${formatConfigClearTheme(importedName)}
                         </button>
                       `
                     : nothing}
@@ -1028,7 +1060,9 @@ function renderAppearanceSection(props: ConfigProps) {
                 ${props.hasCustomTheme
                   ? html`
                       <div class="settings-theme-import__meta">
-                        <span class="settings-theme-import__meta-label">Loaded</span>
+                        <span class="settings-theme-import__meta-label">
+                          ${localizeConfigCopy("Loaded")}
+                        </span>
                         <span class="settings-theme-import__meta-value"
                           >${importedName} · ${props.customThemeSourceUrl ?? "tweakcn"}</span
                         >
@@ -1049,15 +1083,18 @@ function renderAppearanceSection(props: ConfigProps) {
             `
           : html`
               <p class="settings-theme-import__inline-hint">
-                Click <strong>Import</strong> to add one browser-local tweakcn theme. In tweakcn,
-                use Share and paste the copied link here.
+                ${localizeConfigCopy(
+                  "Click Import to add one browser-local tweakcn theme. In tweakcn, use Share and paste the copied link here.",
+                )}
               </p>
             `}
       </div>
 
       <div class="settings-appearance__section">
-        <h3 class="settings-appearance__heading">Roundness</h3>
-        <p class="settings-appearance__hint">Adjust corner radius across the UI.</p>
+        <h3 class="settings-appearance__heading">${localizeConfigCopy("Roundness")}</h3>
+        <p class="settings-appearance__hint">
+          ${localizeConfigCopy("Adjust corner radius across the UI.")}
+        </p>
         <div class="settings-roundness">
           <div class="settings-roundness__options">
             ${BORDER_RADIUS_STOPS.map(
@@ -1071,7 +1108,9 @@ function renderAppearanceSection(props: ConfigProps) {
                     class="settings-roundness__swatch"
                     style="border-radius: ${Math.round(10 * (stop / 50))}px"
                   ></span>
-                  <span class="settings-roundness__label">${BORDER_RADIUS_LABELS[stop]}</span>
+                  <span class="settings-roundness__label">
+                    ${localizeConfigCopy(BORDER_RADIUS_LABELS[stop])}
+                  </span>
                 </button>
               `,
             )}
@@ -1080,14 +1119,14 @@ function renderAppearanceSection(props: ConfigProps) {
       </div>
 
       <div class="settings-appearance__section">
-        <h3 class="settings-appearance__heading">Connection</h3>
+        <h3 class="settings-appearance__heading">${localizeConfigCopy("Connection")}</h3>
         <div class="settings-info-grid">
           <div class="settings-info-row">
-            <span class="settings-info-row__label">Gateway</span>
+            <span class="settings-info-row__label">${localizeConfigCopy("Gateway")}</span>
             <span class="settings-info-row__value mono">${props.gatewayUrl || "-"}</span>
           </div>
           <div class="settings-info-row">
-            <span class="settings-info-row__label">Status</span>
+            <span class="settings-info-row__label">${localizeConfigCopy("Status")}</span>
             <span class="settings-info-row__value">
               <span
                 class="settings-status-dot ${props.connected ? "settings-status-dot--ok" : ""}"
@@ -1098,7 +1137,7 @@ function renderAppearanceSection(props: ConfigProps) {
           ${props.assistantName
             ? html`
                 <div class="settings-info-row">
-                  <span class="settings-info-row__label">Assistant</span>
+                  <span class="settings-info-row__label">${localizeConfigCopy("Assistant")}</span>
                   <span class="settings-info-row__value">${props.assistantName}</span>
                 </div>
               `
@@ -1199,22 +1238,27 @@ export function renderConfig(props: ConfigProps) {
   const VIRTUAL_SECTIONS = new Set(["__appearance__", "__notifications__"]);
   const visibleCategories = SECTION_CATEGORIES.map((cat) =>
     Object.assign({}, cat, {
-      sections: cat.sections.filter(
-        (s) =>
-          ((includeVirtualSections && VIRTUAL_SECTIONS.has(s.key)) || s.key in schemaProps) &&
-          (!include || include.has(s.key)) &&
-          (!exclude || !exclude.has(s.key)),
-      ),
+      label: localizeConfigCopy(cat.label),
+      sections: cat.sections
+        .filter(
+          (s) =>
+            ((includeVirtualSections && VIRTUAL_SECTIONS.has(s.key)) || s.key in schemaProps) &&
+            (!include || include.has(s.key)) &&
+            (!exclude || !exclude.has(s.key)),
+        )
+        .map((s) => ({ ...s, label: localizeConfigCopy(s.label) })),
     }),
   ).filter((cat) => cat.sections.length > 0);
 
   // Catch any schema keys not in our categories
   const extraSections = Object.keys(schemaProps)
     .filter((k) => !CATEGORISED_KEYS.has(k))
-    .map((k) => ({ key: k, label: k.charAt(0).toUpperCase() + k.slice(1) }));
+    .map((k) => ({ key: k, label: localizeConfigCopy(k.charAt(0).toUpperCase() + k.slice(1)) }));
 
   const otherCategory: SectionCategory | null =
-    extraSections.length > 0 ? { id: "other", label: "Other", sections: extraSections } : null;
+    extraSections.length > 0
+      ? { id: "other", label: localizeConfigCopy("Other"), sections: extraSections }
+      : null;
 
   const isVirtualSection =
     includeVirtualSections &&
@@ -1235,7 +1279,7 @@ export function renderConfig(props: ConfigProps) {
   const effectiveSubsection = null;
 
   const topTabs = [
-    { key: null as string | null, label: props.navRootLabel ?? "Settings" },
+    { key: null as string | null, label: localizeConfigCopy(props.navRootLabel ?? "Settings") },
     ...[...visibleCategories, ...(otherCategory ? [otherCategory] : [])].flatMap((cat) =>
       cat.sections.map((s) => ({ key: s.key, label: s.label })),
     ),
@@ -1278,7 +1322,7 @@ export function renderConfig(props: ConfigProps) {
                 >
                   <polyline points="15 18 9 12 15 6"></polyline>
                 </svg>
-                Quick Settings
+                ${localizeConfigCopy("Quick Settings")}
               </button>
             `
           : nothing}
@@ -1400,20 +1444,22 @@ export function renderConfig(props: ConfigProps) {
                     <button
                       class="config-mode-toggle__btn ${formMode === "form" ? "active" : ""}"
                       ?disabled=${props.schemaLoading || !props.schema}
-                      title=${formUnsafe ? "Form view can't safely edit some fields" : ""}
+                      title=${formUnsafe
+                        ? localizeConfigCopy("Form view can't safely edit some fields")
+                        : ""}
                       @click=${() => props.onFormModeChange("form")}
                     >
-                      Form
+                      ${localizeConfigCopy("Form")}
                     </button>
                     <button
                       class="config-mode-toggle__btn ${formMode === "raw" ? "active" : ""}"
                       ?disabled=${!rawAvailable}
                       title=${rawAvailable
-                        ? "Edit raw JSON/JSON5 config"
-                        : "Raw mode unavailable for this snapshot"}
+                        ? localizeConfigCopy("Edit raw JSON/JSON5 config")
+                        : localizeConfigCopy("Raw mode unavailable for this snapshot")}
                       @click=${() => props.onFormModeChange("raw")}
                     >
-                      Raw
+                      ${localizeConfigCopy("Raw")}
                     </button>
                   </div>
                 `
@@ -1422,17 +1468,21 @@ export function renderConfig(props: ConfigProps) {
               ? html`
                   <span class="config-changes-badge"
                     >${formMode === "raw"
-                      ? "Unsaved changes"
-                      : `${diff.length} unsaved change${diff.length !== 1 ? "s" : ""}`}</span
+                      ? localizeConfigCopy("Unsaved changes")
+                      : formatConfigUnsavedChanges(diff.length)}</span
                   >
                 `
-              : html` <span class="config-status muted">No changes</span> `}
+              : html`
+                  <span class="config-status muted">${localizeConfigCopy("No changes")}</span>
+                `}
           </div>
           <div class="config-actions__right">
             ${!rawAvailable
               ? html`
                   <span class="config-status muted config-actions__notice"
-                    >Raw mode disabled (snapshot cannot safely round-trip raw text).</span
+                    >${localizeConfigCopy(
+                      "Raw mode disabled (snapshot cannot safely round-trip raw text).",
+                    )}</span
                   >
                 `
               : nothing}
@@ -1441,10 +1491,10 @@ export function renderConfig(props: ConfigProps) {
                 ? html`
                     <button
                       class="btn btn--sm"
-                      title=${props.configPath ? `Open ${props.configPath}` : "Open config file"}
+                      title=${formatConfigOpenTitle(props.configPath)}
                       @click=${props.onOpenFile}
                     >
-                      ${icons.fileText} Open
+                      ${icons.fileText} ${localizeConfigCopy("Open")}
                     </button>
                   `
                 : nothing}
@@ -1452,7 +1502,7 @@ export function renderConfig(props: ConfigProps) {
                 ${props.loading ? t("common.loading") : t("common.reload")}
               </button>
               <button class="btn btn--sm" ?disabled=${!hasChanges} @click=${props.onReset}>
-                Clear
+                ${localizeConfigCopy("Clear")}
               </button>
               <button
                 class="btn btn--sm primary"
@@ -1460,7 +1510,11 @@ export function renderConfig(props: ConfigProps) {
                 aria-busy=${props.saving ? "true" : "false"}
                 @click=${props.onSave}
               >
-                ${renderActionButtonContent(props.saving, "Save", "Saving…")}
+                ${renderActionButtonContent(
+                  props.saving,
+                  localizeConfigCopy("Save"),
+                  localizeConfigCopy("Saving…"),
+                )}
               </button>
               <button
                 class="btn btn--sm"
@@ -1468,7 +1522,11 @@ export function renderConfig(props: ConfigProps) {
                 aria-busy=${props.applying ? "true" : "false"}
                 @click=${props.onApply}
               >
-                ${renderActionButtonContent(props.applying, "Apply", "Applying…")}
+                ${renderActionButtonContent(
+                  props.applying,
+                  localizeConfigCopy("Apply"),
+                  localizeConfigCopy("Applying…"),
+                )}
               </button>
               <button
                 class="btn btn--sm"
@@ -1476,7 +1534,11 @@ export function renderConfig(props: ConfigProps) {
                 aria-busy=${props.updating ? "true" : "false"}
                 @click=${props.onUpdate}
               >
-                ${renderActionButtonContent(props.updating, "Update", "Updating…")}
+                ${renderActionButtonContent(
+                  props.updating,
+                  localizeConfigCopy("Update"),
+                  localizeConfigCopy("Updating…"),
+                )}
               </button>
             </div>
           </div>
@@ -1503,8 +1565,8 @@ export function renderConfig(props: ConfigProps) {
                           <input
                             type="text"
                             class="config-search__input"
-                            placeholder="Search settings..."
-                            aria-label="Search settings"
+                            placeholder=${localizeConfigCopy("Search settings...")}
+                            aria-label=${localizeConfigCopy("Search settings")}
                             .value=${props.searchQuery}
                             @input=${(e: Event) =>
                               props.onSearchChange((e.target as HTMLInputElement).value)}
@@ -1513,7 +1575,7 @@ export function renderConfig(props: ConfigProps) {
                             ? html`
                                 <button
                                   class="config-search__clear"
-                                  aria-label="Clear search"
+                                  aria-label=${localizeConfigCopy("Clear search")}
                                   @click=${() => props.onSearchChange("")}
                                 >
                                   ×
@@ -1572,7 +1634,9 @@ export function renderConfig(props: ConfigProps) {
                   <line x1="12" y1="17" x2="12.01" y2="17"></line>
                 </svg>
                 <span class="config-validity-warning__text"
-                  >Your configuration is invalid. Some settings may not work as expected.</span
+                  >${localizeConfigCopy(
+                    "Your configuration is invalid. Some settings may not work as expected.",
+                  )}</span
                 >
                 <button
                   class="btn btn--sm"
@@ -1581,7 +1645,7 @@ export function renderConfig(props: ConfigProps) {
                     requestUpdate();
                   }}
                 >
-                  Don't remind again
+                  ${localizeConfigCopy("Don't remind again")}
                 </button>
               </div>
             `
@@ -1592,7 +1656,7 @@ export function renderConfig(props: ConfigProps) {
           ? html`
               <details class="config-diff">
                 <summary class="config-diff__summary">
-                  <span>View ${diff.length} pending change${diff.length !== 1 ? "s" : ""}</span>
+                  <span>${formatConfigPendingChanges(diff.length)}</span>
                   <svg
                     class="config-diff__chevron"
                     viewBox="0 0 24 24"
@@ -1642,7 +1706,7 @@ export function renderConfig(props: ConfigProps) {
                 }}
               >
                 <summary class="config-diff__summary">
-                  <span>View pending changes</span>
+                  <span>${localizeConfigCopy("View pending changes")}</span>
                   <svg
                     class="config-diff__chevron"
                     viewBox="0 0 24 24"
@@ -1685,7 +1749,7 @@ export function renderConfig(props: ConfigProps) {
                       )
                     : html`
                         <div class="config-diff__item">
-                          Changes detected (JSON diff not available)
+                          ${localizeConfigCopy("Changes detected (JSON diff not available)")}
                         </div>
                       `}
                 </div>
@@ -1712,7 +1776,9 @@ export function renderConfig(props: ConfigProps) {
                         class="config-env-peek-btn ${envSensitiveVisible
                           ? "config-env-peek-btn--active"
                           : ""}"
-                        title=${envSensitiveVisible ? "Hide env values" : "Reveal env values"}
+                        title=${envSensitiveVisible
+                          ? localizeConfigCopy("Hide env values")
+                          : localizeConfigCopy("Reveal env values")}
                         @click=${() => {
                           cvs.envRevealed = !cvs.envRevealed;
                           requestUpdate();
@@ -1731,7 +1797,7 @@ export function renderConfig(props: ConfigProps) {
                           <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                           <circle cx="12" cy="12" r="3"></circle>
                         </svg>
-                        Peek
+                        ${localizeConfigCopy("Peek")}
                       </button>
                     `
                   : nothing}
@@ -1755,7 +1821,7 @@ export function renderConfig(props: ConfigProps) {
                       ? html`
                           <div class="config-loading">
                             <div class="config-loading__spinner"></div>
-                            <span>Loading schema…</span>
+                            <span>${localizeConfigCopy("Loading schema…")}</span>
                           </div>
                         `
                       : renderConfigForm({
@@ -1789,26 +1855,26 @@ export function renderConfig(props: ConfigProps) {
                       ${formUnsafe
                         ? html`
                             <div class="callout info" style="margin-bottom: 12px">
-                              Your config contains fields the form editor can't safely represent.
-                              Use Raw mode to edit those entries.
+                              ${localizeConfigCopy(
+                                "Your config contains fields the form editor can't safely represent. Use Raw mode to edit those entries.",
+                              )}
                             </div>
                           `
                         : nothing}
                       <div class="field config-raw-field">
                         <span style="display:flex;align-items:center;gap:8px;">
-                          Raw config (JSON/JSON5)
+                          ${localizeConfigCopy("Raw config (JSON/JSON5)")}
                           ${sensitiveCount > 0
                             ? html`
                                 <span class="pill pill--sm"
-                                  >${sensitiveCount} secret${sensitiveCount === 1 ? "" : "s"}
-                                  ${blurred ? "redacted" : "visible"}</span
+                                  >${formatConfigSensitiveSummary(sensitiveCount, !blurred)}</span
                                 >
                                 <button
                                   class="btn btn--icon config-raw-toggle ${blurred ? "" : "active"}"
                                   title=${blurred
-                                    ? "Reveal sensitive values"
-                                    : "Hide sensitive values"}
-                                  aria-label="Toggle raw config redaction"
+                                    ? localizeConfigCopy("Reveal sensitive values")
+                                    : localizeConfigCopy("Hide sensitive values")}
+                                  aria-label=${localizeConfigCopy("Toggle raw config redaction")}
                                   aria-pressed=${!blurred}
                                   @click=${() => {
                                     cvs.rawRevealed = !cvs.rawRevealed;
@@ -1823,13 +1889,12 @@ export function renderConfig(props: ConfigProps) {
                         ${blurred
                           ? html`
                               <div class="callout info" style="margin-top: 12px">
-                                ${sensitiveCount} sensitive value${sensitiveCount === 1 ? "" : "s"}
-                                hidden. Use the reveal button above to edit the raw config.
+                                ${formatConfigSensitiveHidden(sensitiveCount)}
                               </div>
                             `
                           : html`
                               <textarea
-                                placeholder="Raw config (JSON/JSON5)"
+                                placeholder=${localizeConfigCopy("Raw config (JSON/JSON5)")}
                                 .value=${props.raw}
                                 @input=${(e: Event) => {
                                   props.onRawChange((e.target as HTMLTextAreaElement).value);
