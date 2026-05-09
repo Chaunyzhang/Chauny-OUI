@@ -1,4 +1,5 @@
 import { t } from "../i18n/index.ts";
+import { localizeConfigCopy } from "../i18n/lib/config-copy.ts";
 import type { IconName } from "./icons.js";
 import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
 
@@ -41,6 +42,8 @@ export type Tab =
   | "automation"
   | "infrastructure"
   | "aiAgents"
+  | "setupWizard"
+  | "modelManager"
   | "debug"
   | "logs"
   | "dreams";
@@ -62,6 +65,8 @@ const TAB_PATHS: Record<Tab, string> = {
   automation: "/automation",
   infrastructure: "/infrastructure",
   aiAgents: "/ai-agents",
+  setupWizard: "/oui/setup",
+  modelManager: "/oui/models",
   debug: "/debug",
   logs: "/logs",
   dreams: "/dreaming",
@@ -69,6 +74,10 @@ const TAB_PATHS: Record<Tab, string> = {
 
 const PATH_ALIASES: Record<string, Tab> = {
   "/dreams": "dreams",
+  "/setup": "setupWizard",
+  "/onboard": "setupWizard",
+  "/model-manager": "modelManager",
+  "/models": "modelManager",
 };
 
 const PATH_TO_TAB = new Map<string, Tab>([
@@ -189,6 +198,10 @@ export function iconForTab(tab: Tab): IconName {
       return "globe";
     case "aiAgents":
       return "brain";
+    case "setupWizard":
+      return "spark";
+    case "modelManager":
+      return "brain";
     case "debug":
       return "bug";
     case "logs":
@@ -201,9 +214,21 @@ export function iconForTab(tab: Tab): IconName {
 }
 
 export function titleForTab(tab: Tab) {
+  if (tab === "setupWizard") {
+    return localizeConfigCopy("Setup Wizard");
+  }
+  if (tab === "modelManager") {
+    return localizeConfigCopy("Model Manager");
+  }
   return t(`tabs.${tab}`);
 }
 
 export function subtitleForTab(tab: Tab) {
+  if (tab === "setupWizard") {
+    return localizeConfigCopy("Configure model plans and chat apps");
+  }
+  if (tab === "modelManager") {
+    return localizeConfigCopy("Manage configured models");
+  }
   return t(`subtitles.${tab}`);
 }

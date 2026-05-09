@@ -442,6 +442,55 @@
   padding: 0 8px 18px;
 }
 
+.sidebar-surface-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin: 0 6px 14px;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg-muted) 68%, transparent);
+}
+
+.sidebar-surface-switch__button {
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sidebar-surface-switch__button:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg-hover) 76%, transparent);
+}
+
+.sidebar-surface-switch__button--active {
+  color: var(--text-strong);
+  background: var(--bg-elevated);
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  box-shadow: 0 8px 18px color-mix(in srgb, black 8%, transparent);
+}
+
+.sidebar-surface-switch--collapsed {
+  grid-template-columns: 1fr;
+  margin: 0 auto 14px;
+  width: 44px;
+  padding: 3px;
+}
+
+.sidebar-surface-switch--collapsed .sidebar-surface-switch__button {
+  min-height: 26px;
+  font-size: 10px;
+}
+
 .sidebar-shell__body {
   min-height: 0;
   flex: 1;
@@ -594,6 +643,14 @@
 .nav-section__label:hover {
   color: var(--text);
   background: color-mix(in srgb, var(--bg-hover) 72%, transparent);
+}
+
+.nav-section__heading {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  color: var(--muted);
 }
 
 .nav-section__label-text {

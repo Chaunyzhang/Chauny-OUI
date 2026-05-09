@@ -117,6 +117,8 @@ import type {
   NostrProfile,
   ToolsCatalogResult,
   ToolsEffectiveResult,
+  WizardRunStatus,
+  WizardStep,
 } from "./types.ts";
 import { type ChatAttachment, type ChatQueueItem, type CronFormState } from "./ui-types.ts";
 import { generateUUID } from "./uuid.ts";
@@ -332,6 +334,16 @@ export class OpenClawApp extends LitElement {
   @state() aiAgentsSearchQuery = "";
   @state() aiAgentsActiveSection: string | null = null;
   @state() aiAgentsActiveSubsection: string | null = null;
+  @state() setupWizardBusy = false;
+  @state() setupWizardSessionId: string | null = null;
+  @state() setupWizardStep: WizardStep | null = null;
+  @state() setupWizardStatus: WizardRunStatus | "idle" = "idle";
+  @state() setupWizardError: string | null = null;
+  @state() setupModelProviderId = "minimax";
+  @state() setupModelPlanId = "minimax-cn-api";
+  @state() setupModelApiKey = "";
+  @state() setupModelSaving = false;
+  @state() setupModelMessage: { kind: "success" | "error"; text: string } | null = null;
 
   @state() channelsLoading = false;
   @state() channelsSnapshot: ChannelsStatusSnapshot | null = null;

@@ -5,6 +5,9 @@
 @import "./styles/chat.css";
 @import "./styles/config.css";
 @import "./styles/config-quick.css";
+@import "./styles/oui-select.css";
+@import "./styles/model-manager.css";
+@import "./styles/setup-wizard.css";
 @import "./styles/cron-quick-create.css";
 @import "./styles/usage.css";
 @import "./styles/dreams.css";

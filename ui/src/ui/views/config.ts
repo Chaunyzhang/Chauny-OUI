@@ -104,6 +104,7 @@ export type ConfigProps = {
   includeSections?: string[];
   excludeSections?: string[];
   includeVirtualSections?: boolean;
+  sectionOverrides?: Record<string, TemplateResult>;
   /** Layout mode: "tabs" (default flat scroll) or "accordion" (grouped collapsible). */
   settingsLayout?: "tabs" | "accordion";
   /** Callback to navigate back to Quick Settings. Shown in accordion mode. */
@@ -1432,6 +1433,8 @@ export function renderConfig(props: ConfigProps) {
     formMode === "form" &&
     props.activeSection === null &&
     Boolean(include?.has("__appearance__"));
+  const sectionOverride =
+    typeof props.activeSection === "string" ? props.sectionOverrides?.[props.activeSection] : null;
 
   return html`
     <div class="config-layout">
@@ -1806,104 +1809,108 @@ export function renderConfig(props: ConfigProps) {
           : nothing}
         <!-- Form content -->
         <div class="config-content">
-          ${props.activeSection === "__appearance__"
-            ? includeVirtualSections
-              ? renderAppearanceSection(props)
-              : nothing
-            : props.activeSection === "__notifications__"
+          ${sectionOverride
+            ? sectionOverride
+            : props.activeSection === "__appearance__"
               ? includeVirtualSections
-                ? renderNotificationsSection(props)
+                ? renderAppearanceSection(props)
                 : nothing
-              : formMode === "form"
-                ? html`
-                    ${showAppearanceOnRoot ? renderAppearanceSection(props) : nothing}
-                    ${props.schemaLoading
-                      ? html`
-                          <div class="config-loading">
-                            <div class="config-loading__spinner"></div>
-                            <span>${localizeConfigCopy("Loading schema…")}</span>
-                          </div>
-                        `
-                      : renderConfigForm({
-                          schema: analysis.schema,
-                          uiHints: props.uiHints,
-                          value: props.formValue,
-                          rawAvailable,
-                          disabled: props.loading || !props.formValue,
-                          unsupportedPaths: analysis.unsupportedPaths,
-                          onPatch: props.onFormPatch,
-                          searchQuery: props.searchQuery,
-                          activeSection: props.activeSection,
-                          activeSubsection: effectiveSubsection,
-                          revealSensitive:
-                            props.activeSection === "env" ? envSensitiveVisible : false,
-                          isSensitivePathRevealed,
-                          onToggleSensitivePath: (path) => {
-                            toggleSensitivePathReveal(path);
-                            requestUpdate();
-                          },
-                        })}
-                  `
-                : (() => {
-                    const sensitiveCount = countSensitiveConfigValues(
-                      props.formValue,
-                      [],
-                      props.uiHints,
-                    );
-                    const blurred = sensitiveCount > 0 && !cvs.rawRevealed;
-                    return html`
-                      ${formUnsafe
+              : props.activeSection === "__notifications__"
+                ? includeVirtualSections
+                  ? renderNotificationsSection(props)
+                  : nothing
+                : formMode === "form"
+                  ? html`
+                      ${showAppearanceOnRoot ? renderAppearanceSection(props) : nothing}
+                      ${props.schemaLoading
                         ? html`
-                            <div class="callout info" style="margin-bottom: 12px">
-                              ${localizeConfigCopy(
-                                "Your config contains fields the form editor can't safely represent. Use Raw mode to edit those entries.",
-                              )}
+                            <div class="config-loading">
+                              <div class="config-loading__spinner"></div>
+                              <span>${localizeConfigCopy("Loading schema…")}</span>
                             </div>
                           `
-                        : nothing}
-                      <div class="field config-raw-field">
-                        <span style="display:flex;align-items:center;gap:8px;">
-                          ${localizeConfigCopy("Raw config (JSON/JSON5)")}
-                          ${sensitiveCount > 0
-                            ? html`
-                                <span class="pill pill--sm"
-                                  >${formatConfigSensitiveSummary(sensitiveCount, !blurred)}</span
-                                >
-                                <button
-                                  class="btn btn--icon config-raw-toggle ${blurred ? "" : "active"}"
-                                  title=${blurred
-                                    ? localizeConfigCopy("Reveal sensitive values")
-                                    : localizeConfigCopy("Hide sensitive values")}
-                                  aria-label=${localizeConfigCopy("Toggle raw config redaction")}
-                                  aria-pressed=${!blurred}
-                                  @click=${() => {
-                                    cvs.rawRevealed = !cvs.rawRevealed;
-                                    requestUpdate();
-                                  }}
-                                >
-                                  ${blurred ? icons.eyeOff : icons.eye}
-                                </button>
-                              `
-                            : nothing}
-                        </span>
-                        ${blurred
+                        : renderConfigForm({
+                            schema: analysis.schema,
+                            uiHints: props.uiHints,
+                            value: props.formValue,
+                            rawAvailable,
+                            disabled: props.loading || !props.formValue,
+                            unsupportedPaths: analysis.unsupportedPaths,
+                            onPatch: props.onFormPatch,
+                            searchQuery: props.searchQuery,
+                            activeSection: props.activeSection,
+                            activeSubsection: effectiveSubsection,
+                            revealSensitive:
+                              props.activeSection === "env" ? envSensitiveVisible : false,
+                            isSensitivePathRevealed,
+                            onToggleSensitivePath: (path) => {
+                              toggleSensitivePathReveal(path);
+                              requestUpdate();
+                            },
+                          })}
+                    `
+                  : (() => {
+                      const sensitiveCount = countSensitiveConfigValues(
+                        props.formValue,
+                        [],
+                        props.uiHints,
+                      );
+                      const blurred = sensitiveCount > 0 && !cvs.rawRevealed;
+                      return html`
+                        ${formUnsafe
                           ? html`
-                              <div class="callout info" style="margin-top: 12px">
-                                ${formatConfigSensitiveHidden(sensitiveCount)}
+                              <div class="callout info" style="margin-bottom: 12px">
+                                ${localizeConfigCopy(
+                                  "Your config contains fields the form editor can't safely represent. Use Raw mode to edit those entries.",
+                                )}
                               </div>
                             `
-                          : html`
-                              <textarea
-                                placeholder=${localizeConfigCopy("Raw config (JSON/JSON5)")}
-                                .value=${props.raw}
-                                @input=${(e: Event) => {
-                                  props.onRawChange((e.target as HTMLTextAreaElement).value);
-                                }}
-                              ></textarea>
-                            `}
-                      </div>
-                    `;
-                  })()}
+                          : nothing}
+                        <div class="field config-raw-field">
+                          <span style="display:flex;align-items:center;gap:8px;">
+                            ${localizeConfigCopy("Raw config (JSON/JSON5)")}
+                            ${sensitiveCount > 0
+                              ? html`
+                                  <span class="pill pill--sm"
+                                    >${formatConfigSensitiveSummary(sensitiveCount, !blurred)}</span
+                                  >
+                                  <button
+                                    class="btn btn--icon config-raw-toggle ${blurred
+                                      ? ""
+                                      : "active"}"
+                                    title=${blurred
+                                      ? localizeConfigCopy("Reveal sensitive values")
+                                      : localizeConfigCopy("Hide sensitive values")}
+                                    aria-label=${localizeConfigCopy("Toggle raw config redaction")}
+                                    aria-pressed=${!blurred}
+                                    @click=${() => {
+                                      cvs.rawRevealed = !cvs.rawRevealed;
+                                      requestUpdate();
+                                    }}
+                                  >
+                                    ${blurred ? icons.eyeOff : icons.eye}
+                                  </button>
+                                `
+                              : nothing}
+                          </span>
+                          ${blurred
+                            ? html`
+                                <div class="callout info" style="margin-top: 12px">
+                                  ${formatConfigSensitiveHidden(sensitiveCount)}
+                                </div>
+                              `
+                            : html`
+                                <textarea
+                                  placeholder=${localizeConfigCopy("Raw config (JSON/JSON5)")}
+                                  .value=${props.raw}
+                                  @input=${(e: Event) => {
+                                    props.onRawChange((e.target as HTMLTextAreaElement).value);
+                                  }}
+                                ></textarea>
+                              `}
+                        </div>
+                      `;
+                    })()}
         </div>
 
         ${props.issues.length > 0

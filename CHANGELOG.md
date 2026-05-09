@@ -6,6 +6,9 @@ Docs: https://docs.openclaw.ai
 
 ### Changes
 
+- Control UI: add a model management page with plan-grouped provider cards, OAuth/API status, default-model actions, MiniMax/Codex quick presets, and a compact custom API provider form.
+- Control UI: add the simplified OUI model setup flow directly to Model Manager, letting users choose provider → plan/region → API key and write provider endpoints, model catalogs, and default models through the existing Gateway config API while keeping the raw `openclaw onboard` wizard as an advanced fallback route.
+- Control UI: split the sidebar into OUI and original navigation modes so custom OUI pages can live beside upstream pages without replacing the original settings surfaces.
 - Control UI: make Simplified Chinese localization more complete and easier to understand across settings, automation, skills, nodes, logs, chat, and memory surfaces.
 - Telegram: preserve the channel-specific 10-option poll cap in the unified outbound adapter so over-limit polls are rejected before send. (#78762) Thanks @obviyus.
 - Runtime/install: raise the supported Node 22 floor to `22.16+` so native SQLite query handling can rely on the `node:sqlite` statement metadata API while continuing to recommend Node 24. (#78921)

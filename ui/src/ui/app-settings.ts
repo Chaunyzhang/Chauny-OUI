@@ -47,6 +47,7 @@ import {
   loadModelAuthStatusState,
   type ModelAuthStatusState,
 } from "./controllers/model-auth-status.ts";
+import { loadModels } from "./controllers/models.ts";
 import { loadNodes, type NodesState } from "./controllers/nodes.ts";
 import { loadPresence, type PresenceState } from "./controllers/presence.ts";
 import { loadSessions, type SessionsState } from "./controllers/sessions.ts";
@@ -71,7 +72,7 @@ import {
 import { normalizeOptionalString } from "./string-coerce.ts";
 import { startThemeTransition, type ThemeTransitionContext } from "./theme-transition.ts";
 import { resolveTheme, type ResolvedTheme, type ThemeMode, type ThemeName } from "./theme.ts";
-import type { AgentsListResult, AttentionItem } from "./types.ts";
+import type { AgentsListResult, AttentionItem, ModelCatalogEntry } from "./types.ts";
 import { normalizeLocalUserIdentity } from "./user-identity.ts";
 import { resetChatViewState } from "./views/chat.ts";
 
@@ -144,6 +145,8 @@ type SettingsAppHost = SettingsHost &
     overviewLogLines: string[];
     attentionItems: AttentionItem[];
     hello: { auth?: { role?: string; scopes?: string[] } } | null;
+    chatModelsLoading: boolean;
+    chatModelCatalog: ModelCatalogEntry[];
   };
 
 export function applySettings(host: SettingsHost, next: UiSettings) {
@@ -346,6 +349,24 @@ async function refreshAgentsTab(host: SettingsHost, app: SettingsAppHost) {
   }
 }
 
+async function refreshModelManagementData(app: SettingsAppHost) {
+  if (!app.client || !app.connected) {
+    app.chatModelsLoading = false;
+    app.chatModelCatalog = [];
+    return;
+  }
+  app.chatModelsLoading = true;
+  try {
+    const [models] = await Promise.all([
+      loadModels(app.client),
+      loadModelAuthStatusState(app, { refresh: false }),
+    ]);
+    app.chatModelCatalog = models;
+  } finally {
+    app.chatModelsLoading = false;
+  }
+}
+
 export async function refreshActiveTab(host: SettingsHost) {
   const app = host as unknown as SettingsAppHost;
   const refreshRun = beginControlUiRefresh(host, host.tab);
@@ -356,9 +377,22 @@ export async function refreshActiveTab(host: SettingsHost) {
       case "appearance":
       case "automation":
       case "infrastructure":
-      case "aiAgents":
         await loadConfigSchema(app);
         await loadConfig(app);
+        break;
+      case "aiAgents":
+      case "modelManager":
+        await loadConfigSchema(app);
+        await loadConfig(app);
+        await refreshModelManagementData(app);
+        break;
+      case "setupWizard":
+        await loadConfigSchema(app);
+        await loadConfig(app);
+        await Promise.allSettled([
+          refreshModelManagementData(app),
+          loadChannels(app, false, { softTimeoutMs: 750 }),
+        ]);
         break;
       case "overview":
         await loadOverview(host);
@@ -565,6 +599,7 @@ function applyTabSelection(
   next: Tab,
   options: { refreshPolicy: "always" | "connected"; syncUrl?: boolean },
 ) {
+  syncNavigationModeForTab(host, next);
   const prev = host.tab;
   host.tab = next;
   if (prev !== next) {
@@ -593,6 +628,14 @@ function applyTabSelection(
   if (options.syncUrl) {
     syncUrlWithTab(host, next, false);
   }
+}
+
+function syncNavigationModeForTab(host: SettingsHost, next: Tab) {
+  const desired = next === "modelManager" || next === "setupWizard" ? "oui" : "original";
+  if ((host.settings.navigationMode ?? "original") === desired) {
+    return;
+  }
+  applySettings(host, { ...host.settings, navigationMode: desired });
 }
 
 export function syncUrlWithTab(host: SettingsHost, tab: Tab, replace: boolean) {

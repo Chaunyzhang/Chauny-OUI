@@ -55,6 +55,7 @@ export type UiSettings = {
   token: string;
   sessionKey: string;
   lastActiveSessionKey: string;
+  navigationMode?: UiNavigationMode;
   theme: ThemeName;
   themeMode: ThemeMode;
   chatFocusMode: boolean;
@@ -69,6 +70,7 @@ export type UiSettings = {
   locale?: string;
 };
 
+export type UiNavigationMode = "oui" | "original";
 export type { LocalUserIdentity } from "./user-identity.ts";
 
 function isViteDevPage(): boolean {
@@ -187,6 +189,10 @@ function persistSessionToken(gatewayUrl: string, token: string) {
   }
 }
 
+function parseNavigationMode(value: unknown): UiNavigationMode {
+  return value === "oui" || value === "original" ? value : "original";
+}
+
 export function loadSettings(): UiSettings {
   const { pageUrl: pageDerivedUrl, effectiveUrl: defaultUrl } = deriveDefaultGatewayUrl();
   const storage = getSafeLocalStorage();
@@ -196,6 +202,7 @@ export function loadSettings(): UiSettings {
     token: loadSessionToken(defaultUrl),
     sessionKey: "main",
     lastActiveSessionKey: "main",
+    navigationMode: "original",
     theme: "claw",
     themeMode: "system",
     chatFocusMode: false,
@@ -233,6 +240,7 @@ export function loadSettings(): UiSettings {
       token: loadSessionToken(gatewayUrl),
       sessionKey: scopedSessionSelection.sessionKey,
       lastActiveSessionKey: scopedSessionSelection.lastActiveSessionKey,
+      navigationMode: parseNavigationMode((parsed as { navigationMode?: unknown }).navigationMode),
       theme: theme === "custom" && !customTheme ? "claw" : theme,
       themeMode: mode,
       chatFocusMode:
@@ -376,6 +384,7 @@ function persistSettings(next: UiSettings) {
   );
   const persisted: PersistedUiSettings = {
     gatewayUrl: next.gatewayUrl,
+    navigationMode: next.navigationMode ?? "original",
     theme: next.theme,
     themeMode: next.themeMode,
     chatFocusMode: next.chatFocusMode,

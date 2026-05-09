@@ -25,7 +25,8 @@ export type ControlUiBootstrapState = {
   chatMessageMaxWidth?: string | null;
   sessionKey?: string | null;
   hello?: { auth?: { deviceToken?: string | null } | null } | null;
-  settings?: { token?: string | null } | null;
+  settings?: { gatewayUrl?: string | null; token?: string | null } | null;
+  applySettings?: (settings: NonNullable<ControlUiBootstrapState["settings"]>) => void;
   password?: string | null;
 };
 
@@ -52,6 +53,35 @@ function applyLocalAssistantAvatarOverride(state: ControlUiBootstrapState) {
   state.assistantAvatarSource = localAvatar;
   state.assistantAvatarStatus = "data";
   state.assistantAvatarReason = null;
+}
+
+function applyBootstrapConnectionSettings(
+  state: ControlUiBootstrapState,
+  parsed: ControlUiBootstrapConfig,
+) {
+  const settings = state.settings;
+  if (!settings) {
+    return;
+  }
+  const nextGatewayUrl = normalizeOptionalString(parsed.gatewayUrl);
+  const hasToken = Object.prototype.hasOwnProperty.call(parsed, "token");
+  const nextToken = hasToken ? (normalizeOptionalString(parsed.token) ?? "") : settings.token;
+  const nextSettings = {
+    ...settings,
+    ...(nextGatewayUrl ? { gatewayUrl: nextGatewayUrl } : {}),
+    token: nextToken ?? "",
+  };
+  if (
+    nextSettings.gatewayUrl === settings.gatewayUrl &&
+    nextSettings.token === (settings.token ?? "")
+  ) {
+    return;
+  }
+  if (typeof state.applySettings === "function") {
+    state.applySettings(nextSettings);
+    return;
+  }
+  state.settings = nextSettings;
 }
 
 export async function loadControlUiBootstrapConfig(
@@ -120,6 +150,7 @@ export async function loadControlUiBootstrapConfig(
       // Local override always wins — same pattern as the user avatar.
       applyLocalAssistantAvatarOverride(state);
     }
+    applyBootstrapConnectionSettings(state, parsed);
     state.serverVersion = parsed.serverVersion ?? null;
     state.localMediaPreviewRoots = Array.isArray(parsed.localMediaPreviewRoots)
       ? parsed.localMediaPreviewRoots.filter((value): value is string => typeof value === "string")

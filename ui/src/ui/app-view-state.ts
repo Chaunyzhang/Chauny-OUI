@@ -34,6 +34,8 @@ import type {
   ChatModelOverride,
   ModelAuthStatusResult,
   ModelCatalogEntry,
+  WizardRunStatus,
+  WizardStep,
   NostrProfile,
   PresenceEntry,
   SessionsUsageResult,
@@ -212,6 +214,16 @@ export type AppViewState = {
   aiAgentsSearchQuery: string;
   aiAgentsActiveSection: string | null;
   aiAgentsActiveSubsection: string | null;
+  setupWizardBusy: boolean;
+  setupWizardSessionId: string | null;
+  setupWizardStep: WizardStep | null;
+  setupWizardStatus: WizardRunStatus | "idle";
+  setupWizardError: string | null;
+  setupModelProviderId: string;
+  setupModelPlanId: string;
+  setupModelApiKey: string;
+  setupModelSaving: boolean;
+  setupModelMessage: { kind: "success" | "error"; text: string } | null;
   channelsLoading: boolean;
   channelsSnapshot: ChannelsStatusSnapshot | null;
   channelsError: string | null;

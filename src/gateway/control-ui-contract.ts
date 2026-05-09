@@ -15,4 +15,6 @@ export type ControlUiBootstrapConfig = {
   embedSandbox?: ControlUiEmbedSandboxMode;
   allowExternalEmbedUrls?: boolean;
   chatMessageMaxWidth?: string;
+  gatewayUrl?: string | null;
+  token?: string | null;
 };

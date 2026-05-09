@@ -182,8 +182,8 @@ export type GatewayConnectClientInfo = {
 };
 
 export type GatewayConnectParams = {
-  minProtocol: 4;
-  maxProtocol: 4;
+  minProtocol: number;
+  maxProtocol: number;
   client: GatewayConnectClientInfo;
   role: string;
   scopes: string[];
@@ -246,6 +246,7 @@ export type GatewayRequestTiming = {
 // 4008 = application-defined code (browser rejects 1008 "Policy Violation")
 const CONNECT_FAILED_CLOSE_CODE = 4008;
 const STARTUP_RETRY_CLOSE_CODE = 4013;
+const CONTROL_UI_GATEWAY_PROTOCOL_VERSION = 3;
 
 function buildGatewayConnectAuth(
   selectedAuth: SelectedConnectAuth,
@@ -452,8 +453,8 @@ export class GatewayBrowserClient {
 
   private buildConnectParams(plan: ConnectPlan): GatewayConnectParams {
     return {
-      minProtocol: 4,
-      maxProtocol: 4,
+      minProtocol: CONTROL_UI_GATEWAY_PROTOCOL_VERSION,
+      maxProtocol: CONTROL_UI_GATEWAY_PROTOCOL_VERSION,
       client: plan.client,
       role: plan.role,
       scopes: plan.scopes,

@@ -766,6 +766,43 @@ export type ModelAuthStatusProvider =
 export type ModelAuthStatusResult =
   import("../../../src/gateway/server-methods/models-auth-status.js").ModelAuthStatusResult;
 
+export type WizardRunStatus = "running" | "done" | "cancelled" | "error";
+
+export type WizardStepOption = {
+  value: unknown;
+  label: string;
+  hint?: string;
+};
+
+export type WizardStep = {
+  id: string;
+  type: "note" | "select" | "text" | "confirm" | "multiselect" | "progress" | "action";
+  title?: string;
+  message?: string;
+  format?: "plain";
+  options?: WizardStepOption[];
+  initialValue?: unknown;
+  placeholder?: string;
+  sensitive?: boolean;
+  executor?: "gateway" | "client";
+};
+
+export type WizardNextResult = {
+  done: boolean;
+  step?: WizardStep;
+  status?: WizardRunStatus;
+  error?: string;
+};
+
+export type WizardStartResult = WizardNextResult & {
+  sessionId: string;
+};
+
+export type WizardStatusResult = {
+  status: WizardRunStatus;
+  error?: string;
+};
+
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 
 export type LogEntry = {

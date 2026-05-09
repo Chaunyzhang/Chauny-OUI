@@ -27,6 +27,8 @@ type Tab =
   | "automation"
   | "infrastructure"
   | "aiAgents"
+  | "setupWizard"
+  | "modelManager"
   | "debug"
   | "logs";
 
@@ -36,6 +38,7 @@ type SettingsHost = {
     token: string;
     sessionKey: string;
     lastActiveSessionKey: string;
+    navigationMode: "oui" | "original";
     theme: ThemeName;
     themeMode: ThemeMode;
     chatFocusMode: boolean;
@@ -134,6 +137,7 @@ const createHost = (tab: Tab): SettingsHost => ({
     token: "",
     sessionKey: "main",
     lastActiveSessionKey: "main",
+    navigationMode: "original",
     theme: "claw",
     themeMode: "system",
     chatFocusMode: false,
@@ -272,6 +276,19 @@ describe("setTabFromRoute", () => {
 
     setTabFromRoute(host, "chat");
     expect(host.debugPollInterval).toBeNull();
+  });
+
+  it("keeps OUI routes in OUI mode and original routes in original mode", () => {
+    const host = createHost("chat");
+
+    setTabFromRoute(host, "setupWizard");
+    expect(host.settings.navigationMode).toBe("oui");
+
+    setTabFromRoute(host, "modelManager");
+    expect(host.settings.navigationMode).toBe("oui");
+
+    setTabFromRoute(host, "aiAgents");
+    expect(host.settings.navigationMode).toBe("original");
   });
 
   it("re-resolves the active palette when only themeMode changes", () => {

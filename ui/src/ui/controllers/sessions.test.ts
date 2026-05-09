@@ -88,7 +88,6 @@ describe("createSessionAndRefresh", () => {
     expect(request).toHaveBeenNthCalledWith(2, "sessions.list", {
       includeGlobal: true,
       includeUnknown: true,
-      configuredAgentsOnly: true,
     });
     expect(state.sessionsResult?.sessions[0]?.key).toBe("agent:main:dashboard:abc");
     expect(state.sessionsLoading).toBe(false);
@@ -151,7 +150,6 @@ describe("deleteSessionsAndRefresh", () => {
     expect(request).toHaveBeenNthCalledWith(3, "sessions.list", {
       includeGlobal: true,
       includeUnknown: true,
-      configuredAgentsOnly: true,
     });
     expect(state.sessionsLoading).toBe(false);
   });
@@ -246,7 +244,6 @@ describe("deleteSessionsAndRefresh", () => {
     expect(request).toHaveBeenNthCalledWith(2, "sessions.list", {
       includeGlobal: true,
       includeUnknown: true,
-      configuredAgentsOnly: true,
     });
     expect(state.sessionsLoading).toBe(false);
   });
@@ -375,7 +372,6 @@ describe("loadSessions", () => {
       limit: 50,
       includeGlobal: true,
       includeUnknown: true,
-      configuredAgentsOnly: true,
     });
   });
 
@@ -405,7 +401,6 @@ describe("loadSessions", () => {
       limit: 50,
       includeGlobal: true,
       includeUnknown: true,
-      configuredAgentsOnly: true,
     });
   });
 
@@ -454,12 +449,10 @@ describe("loadSessions", () => {
       limit: 10,
       includeGlobal: true,
       includeUnknown: true,
-      configuredAgentsOnly: true,
     });
     expect(request).toHaveBeenNthCalledWith(2, "sessions.list", {
       includeGlobal: true,
       includeUnknown: true,
-      configuredAgentsOnly: true,
     });
     expect(state.sessionsResult?.ts).toBe(2);
     expect(state.sessionsLoading).toBe(false);
@@ -542,7 +535,6 @@ describe("loadSessions", () => {
     expect(request).toHaveBeenNthCalledWith(1, "sessions.list", {
       includeGlobal: true,
       includeUnknown: true,
-      configuredAgentsOnly: true,
     });
     expect(request).toHaveBeenNthCalledWith(2, "sessions.compaction.list", {
       key: "agent:main:main",

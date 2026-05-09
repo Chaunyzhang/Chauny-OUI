@@ -35,6 +35,8 @@ describe("iconForTab", () => {
     expect(iconForTab("skills")).toBe("zap");
     expect(iconForTab("nodes")).toBe("monitor");
     expect(iconForTab("config")).toBe("settings");
+    expect(iconForTab("setupWizard")).toBe("spark");
+    expect(iconForTab("modelManager")).toBe("brain");
     expect(iconForTab("debug")).toBe("bug");
     expect(iconForTab("logs")).toBe("scrollText");
   });
@@ -59,6 +61,8 @@ describe("titleForTab", () => {
     expect(titleForTab("chat")).toBe("Chat");
     expect(titleForTab("overview")).toBe("Overview");
     expect(titleForTab("cron")).toBe("Cron Jobs");
+    expect(titleForTab("setupWizard")).toBe("Setup Wizard");
+    expect(titleForTab("modelManager")).toBe("Model Manager");
   });
 });
 
@@ -73,6 +77,8 @@ describe("subtitleForTab", () => {
   it("returns descriptive subtitles", () => {
     expect(subtitleForTab("chat")).toContain("quick interventions");
     expect(subtitleForTab("config")).toContain("openclaw.json");
+    expect(subtitleForTab("setupWizard")).toContain("model plans");
+    expect(subtitleForTab("modelManager")).toContain("configured models");
   });
 });
 
@@ -117,6 +123,8 @@ describe("pathForTab", () => {
   it("returns correct path without base", () => {
     expect(pathForTab("chat")).toBe("/chat");
     expect(pathForTab("overview")).toBe("/overview");
+    expect(pathForTab("setupWizard")).toBe("/oui/setup");
+    expect(pathForTab("modelManager")).toBe("/oui/models");
   });
 
   it("prepends base path", () => {
@@ -132,6 +140,11 @@ describe("tabFromPath", () => {
     expect(tabFromPath("/sessions")).toBe("sessions");
     expect(tabFromPath("/dreaming")).toBe("dreams");
     expect(tabFromPath("/dreams")).toBe("dreams");
+    expect(tabFromPath("/oui/setup")).toBe("setupWizard");
+    expect(tabFromPath("/setup")).toBe("setupWizard");
+    expect(tabFromPath("/onboard")).toBe("setupWizard");
+    expect(tabFromPath("/oui/models")).toBe("modelManager");
+    expect(tabFromPath("/models")).toBe("modelManager");
   });
 
   it("returns chat for root path", () => {

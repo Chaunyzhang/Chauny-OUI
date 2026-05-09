@@ -24,4 +24,12 @@ describe("TAB_GROUPS", () => {
     expect(tabFromPath("/ai-agents")).toBe("aiAgents");
     expect(tabFromPath("/config")).toBe("config");
   });
+
+  it("keeps OUI pages out of the original sidebar groups", () => {
+    const allTabs = TAB_GROUPS.flatMap((group) => group.tabs);
+    expect(allTabs).not.toContain("setupWizard");
+    expect(allTabs).not.toContain("modelManager");
+    expect(tabFromPath("/oui/setup")).toBe("setupWizard");
+    expect(tabFromPath("/oui/models")).toBe("modelManager");
+  });
 });

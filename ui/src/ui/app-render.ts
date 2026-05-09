@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { styleMap } from "lit/directives/style-map.js";
 import { t } from "../i18n/index.ts";
+import { localizeConfigCopy } from "../i18n/lib/config-copy.ts";
 import { getSafeLocalStorage } from "../local-storage.ts";
 import { hasAbortableSessionRun, refreshChat } from "./app-chat.ts";
 import { DEFAULT_CRON_FORM } from "./app-defaults.ts";
@@ -112,6 +113,11 @@ import {
   toggleSessionCompactionCheckpoints,
 } from "./controllers/sessions.ts";
 import {
+  cancelSetupWizard,
+  startSetupWizard,
+  submitSetupWizardAnswer,
+} from "./controllers/setup-wizard.ts";
+import {
   closeClawHubDetail,
   installFromClawHub,
   installSkill,
@@ -128,6 +134,11 @@ import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import { icons } from "./icons.ts";
 import { createLazyView, renderLazyView } from "./lazy-view.ts";
 import {
+  buildQuickModelSetupPatch,
+  getDefaultQuickModelPlanId,
+  resolveQuickModelPlan,
+} from "./model-plan-setup.ts";
+import {
   normalizeBasePath,
   TAB_GROUPS,
   subtitleForTab,
@@ -141,10 +152,9 @@ import {
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
 } from "./session-key.ts";
-import { loadLocalAssistantIdentity } from "./storage.ts";
+import { loadLocalAssistantIdentity, type UiNavigationMode } from "./storage.ts";
 import { normalizeOptionalString } from "./string-coerce.ts";
-import { isRenderableControlUiAvatarUrl } from "./views/agents-utils.ts";
-import { agentLogoUrl } from "./views/agents-utils.ts";
+import { agentLogoUrl, isRenderableControlUiAvatarUrl, ouiLogoUrl } from "./views/agents-utils.ts";
 import {
   resolveAgentConfig,
   resolveConfiguredCronModelSuggestions,
@@ -167,7 +177,9 @@ import { renderDreaming } from "./views/dreaming.ts";
 import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderLoginGate } from "./views/login-gate.ts";
+import { renderModelManager } from "./views/model-manager.ts";
 import { renderOverview } from "./views/overview.ts";
+import { renderSetupWizard } from "./views/setup-wizard.ts";
 
 let _pendingUpdate: (() => void) | undefined;
 
@@ -184,6 +196,31 @@ const lazyLogs = createLazyView(() => import("./views/logs.ts"), notifyLazyViewC
 const lazyNodes = createLazyView(() => import("./views/nodes.ts"), notifyLazyViewChanged);
 const lazySessions = createLazyView(() => import("./views/sessions.ts"), notifyLazyViewChanged);
 const lazySkills = createLazyView(() => import("./views/skills.ts"), notifyLazyViewChanged);
+
+function asRenderRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function resolveConfigDefaultModel(config: Record<string, unknown> | null): string | null {
+  const defaults = asRenderRecord(asRenderRecord(config?.agents)?.defaults);
+  const model = defaults?.model;
+  if (typeof model === "string") {
+    return model.trim() || null;
+  }
+  const modelRecord = asRenderRecord(model);
+  const primary = modelRecord?.primary ?? modelRecord?.model;
+  return typeof primary === "string" && primary.trim() ? primary.trim() : null;
+}
+
+function modelProviderFromRef(modelRef: string | null): string | null {
+  const slash = modelRef?.indexOf("/") ?? -1;
+  if (!modelRef || slash <= 0) {
+    return null;
+  }
+  return modelRef.slice(0, slash).toLowerCase();
+}
 
 function formatDreamNextCycle(nextRunAtMs: number | undefined): string | null {
   if (typeof nextRunAtMs !== "number" || !Number.isFinite(nextRunAtMs)) {
@@ -372,6 +409,7 @@ type ConfigTabOverrides = Pick<
       | "includeSections"
       | "excludeSections"
       | "includeVirtualSections"
+      | "sectionOverrides"
       | "settingsLayout"
       | "onBackToQuick"
       | "webPush"
@@ -433,6 +471,116 @@ function renderMeasured<T>(
     durationMs: roundedControlUiDurationMs(controlUiNowMs() - startedAtMs),
   });
   return result;
+}
+
+function resolveNavigationMode(state: AppViewState): UiNavigationMode {
+  return state.settings.navigationMode ?? "original";
+}
+
+function isOuiTab(tab: Tab): boolean {
+  return tab === "setupWizard" || tab === "modelManager";
+}
+
+function selectNavigationMode(state: AppViewState, mode: UiNavigationMode) {
+  if (resolveNavigationMode(state) !== mode) {
+    state.applySettings({ ...state.settings, navigationMode: mode });
+  }
+  if (mode === "oui") {
+    state.aiAgentsActiveSection = "models";
+    state.aiAgentsActiveSubsection = null;
+    state.aiAgentsFormMode = "form";
+    state.setTab("modelManager");
+    return;
+  }
+  if (isOuiTab(state.tab)) {
+    state.aiAgentsActiveSection = "models";
+    state.aiAgentsActiveSubsection = null;
+    state.setTab("aiAgents");
+  }
+}
+
+function renderNavigationModeSwitch(state: AppViewState, collapsed: boolean) {
+  const mode = resolveNavigationMode(state);
+  const options: Array<{ id: UiNavigationMode; label: string }> = [
+    { id: "oui", label: localizeConfigCopy("OUI") },
+    { id: "original", label: localizeConfigCopy("Original") },
+  ];
+  return html`
+    <div
+      class="sidebar-surface-switch ${collapsed ? "sidebar-surface-switch--collapsed" : ""}"
+      role="group"
+      aria-label=${localizeConfigCopy("Navigation mode")}
+    >
+      ${options.map((option) => {
+        const active = mode === option.id;
+        return html`
+          <button
+            type="button"
+            class="sidebar-surface-switch__button ${active
+              ? "sidebar-surface-switch__button--active"
+              : ""}"
+            aria-pressed=${active ? "true" : "false"}
+            title=${option.label}
+            @click=${() => selectNavigationMode(state, option.id)}
+          >
+            ${option.label}
+          </button>
+        `;
+      })}
+    </div>
+  `;
+}
+
+function renderOriginalNavigation(state: AppViewState, collapsed: boolean) {
+  return html`
+    ${TAB_GROUPS.map((group) => {
+      const isGroupCollapsed = state.settings.navGroupsCollapsed[group.label] ?? false;
+      const hasActiveTab = group.tabs.some((tab) => tab === state.tab);
+      const showItems = collapsed || hasActiveTab || !isGroupCollapsed;
+
+      return html`
+        <section class="nav-section ${!showItems ? "nav-section--collapsed" : ""}">
+          ${!collapsed
+            ? html`
+                <button
+                  class="nav-section__label"
+                  @click=${() => {
+                    const next = { ...state.settings.navGroupsCollapsed };
+                    next[group.label] = !isGroupCollapsed;
+                    state.applySettings({
+                      ...state.settings,
+                      navGroupsCollapsed: next,
+                    });
+                  }}
+                  aria-expanded=${showItems}
+                >
+                  <span class="nav-section__label-text">${t(`nav.${group.label}`)}</span>
+                  <span class="nav-section__chevron"> ${icons.chevronDown} </span>
+                </button>
+              `
+            : nothing}
+          <div class="nav-section__items">
+            ${group.tabs.map((tab) => renderTab(state, tab, { collapsed }))}
+          </div>
+        </section>
+      `;
+    })}
+  `;
+}
+
+function renderOuiNavigation(state: AppViewState, collapsed: boolean) {
+  return html`
+    <section class="nav-section">
+      ${!collapsed
+        ? html`
+            <div class="nav-section__heading">
+              <span class="nav-section__label-text">${localizeConfigCopy("OUI")}</span>
+            </div>
+          `
+        : nothing}
+      <div class="nav-section__items">${renderTab(state, "modelManager", { collapsed })}</div>
+    </section>
+  `;
 }
 
 function resolveAssistantAvatarUrl(state: AppViewState): string | undefined {
@@ -825,6 +973,8 @@ export function renderApp(state: AppViewState) {
     })();
   };
   const basePath = normalizeBasePath(state.basePath ?? "");
+  const isOuiNavigationMode = resolveNavigationMode(state) === "oui";
+  const brandLogoSrc = isOuiNavigationMode ? ouiLogoUrl(basePath) : agentLogoUrl(basePath);
   const resolveSelectedAgentId = () =>
     state.agentsSelectedId ??
     state.agentsList?.defaultId ??
@@ -974,6 +1124,7 @@ export function renderApp(state: AppViewState) {
     | "includeSections"
     | "excludeSections"
     | "includeVirtualSections"
+    | "sectionOverrides"
   >;
   const renderConfigTab = (overrides: ConfigTabOverrides) =>
     renderMeasured(
@@ -1021,6 +1172,256 @@ export function renderApp(state: AppViewState) {
     state.aiAgentsActiveSubsection,
     AI_AGENTS_SECTION_KEYS,
   );
+  const saveDefaultModel = async (modelRef: string, runtimeId?: string | null) => {
+    const trimmed = modelRef.trim();
+    if (!trimmed) {
+      return;
+    }
+    state.setupModelSaving = true;
+    state.setupModelMessage = null;
+    requestHostUpdate?.();
+    try {
+      const patch: Record<string, unknown> = {
+        agents: {
+          defaults: {
+            model: { primary: trimmed },
+          },
+        },
+      };
+      if (runtimeId) {
+        patch.agents = {
+          defaults: {
+            model: { primary: trimmed },
+            agentRuntime: { id: runtimeId },
+          },
+        };
+      }
+      if (!state.configForm && !state.configSnapshot?.hash) {
+        await loadConfig(state, { discardPendingChanges: true });
+      }
+      stageConfigPreset(state, patch);
+      const ok = await saveConfig(state);
+      state.setupModelMessage = ok
+        ? {
+            kind: "success",
+            text: setupMessage(
+              `Saved ${trimmed} as the default model.`,
+              `已保存 ${trimmed}，并设为默认模型。`,
+            ),
+          }
+        : {
+            kind: "error",
+            text: state.lastError ?? setupMessage("Failed to save config.", "保存配置失败。"),
+          };
+    } catch (err) {
+      state.setupModelMessage = { kind: "error", text: String(err) };
+    } finally {
+      state.setupModelSaving = false;
+      requestHostUpdate?.();
+    }
+  };
+  const saveRemoveProvider = async (providerId: string) => {
+    const trimmed = providerId.trim();
+    if (!trimmed) {
+      return;
+    }
+    state.setupModelSaving = true;
+    state.setupModelMessage = null;
+    requestHostUpdate?.();
+    try {
+      if (!state.configForm && !state.configSnapshot?.hash) {
+        await loadConfig(state, { discardPendingChanges: true });
+      }
+      const config = state.configForm ?? state.configSnapshot?.config ?? null;
+      const patch: Record<string, unknown> = {
+        models: {
+          providers: {
+            [trimmed]: null,
+          },
+        },
+      };
+      const defaultProvider = modelProviderFromRef(resolveConfigDefaultModel(config));
+      if (defaultProvider === trimmed.toLowerCase()) {
+        patch.agents = {
+          defaults: {
+            model: null,
+          },
+        };
+      }
+      stageConfigPreset(state, patch);
+      const ok = await saveConfig(state);
+      state.setupModelMessage = ok
+        ? {
+            kind: "success",
+            text: setupMessage(`Removed ${trimmed}.`, `已移除 ${trimmed}。`),
+          }
+        : {
+            kind: "error",
+            text: state.lastError ?? setupMessage("Failed to save config.", "保存配置失败。"),
+          };
+      if (ok) {
+        state.setTab("modelManager");
+      }
+    } catch (err) {
+      state.setupModelMessage = { kind: "error", text: String(err) };
+    } finally {
+      state.setupModelSaving = false;
+      requestHostUpdate?.();
+    }
+  };
+  const renderModelManagerSection = () =>
+    renderModelManager({
+      basePath: state.basePath,
+      catalog: state.chatModelCatalog ?? [],
+      catalogLoading: state.chatModelsLoading,
+      authStatus: state.modelAuthStatusResult,
+      authLoading: state.modelAuthStatusLoading,
+      authError: state.modelAuthStatusError,
+      config: state.configForm ?? state.configSnapshot?.config ?? null,
+      configLoading: state.configLoading,
+      configDirty: state.configFormDirty,
+      connected: state.connected,
+      onRefresh: () => {
+        state.setTab("modelManager");
+      },
+      onSetDefaultModel: (modelRef, runtimeId) => {
+        void saveDefaultModel(modelRef, runtimeId);
+      },
+      onRemoveProvider: (providerId) => {
+        void saveRemoveProvider(providerId);
+      },
+      configReady: Boolean(state.configForm || state.configSnapshot?.hash),
+      setupModelProviderId: state.setupModelProviderId,
+      setupModelPlanId: state.setupModelPlanId,
+      setupModelApiKey: state.setupModelApiKey,
+      setupModelSaving: state.setupModelSaving,
+      setupModelMessage: state.setupModelMessage,
+      onSetupModelProviderChange: (providerId) => {
+        state.setupModelProviderId = providerId;
+        state.setupModelPlanId = getDefaultQuickModelPlanId(providerId);
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelPlanChange: (planId) => {
+        state.setupModelPlanId = planId;
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelApiKeyChange: (apiKey) => {
+        state.setupModelApiKey = apiKey;
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelApply: () => {
+        void applyQuickModelSetup();
+      },
+    });
+  const refreshAfterSetupWizard = () => {
+    if (!state.setupWizardSessionId) {
+      void loadConfig(state, { discardPendingChanges: true }).finally(() => {
+        state.setTab("setupWizard");
+      });
+      return;
+    }
+    requestHostUpdate?.();
+  };
+  const setupMessage = (en: string, zh: string) => (state.settings.locale === "zh-CN" ? zh : en);
+  const applyQuickModelSetup = async () => {
+    state.setupModelSaving = true;
+    state.setupModelMessage = null;
+    requestHostUpdate?.();
+    try {
+      if (!state.configForm && !state.configSnapshot?.hash) {
+        await loadConfig(state, { discardPendingChanges: true });
+      }
+      const plan = resolveQuickModelPlan(state.setupModelProviderId, state.setupModelPlanId);
+      const patch = buildQuickModelSetupPatch(plan, state.setupModelApiKey);
+      stageConfigPreset(state, patch);
+      const ok = await saveConfig(state);
+      if (!ok) {
+        state.setupModelMessage = {
+          kind: "error",
+          text: state.lastError ?? setupMessage("Failed to save config.", "保存配置失败。"),
+        };
+        return;
+      }
+      state.setupModelApiKey = "";
+      state.setupModelMessage = {
+        kind: "success",
+        text: setupMessage(
+          `Saved ${plan.providerId}/${plan.defaultModelId} as the default model.`,
+          `已保存 ${plan.providerId}/${plan.defaultModelId}，并设为默认模型。`,
+        ),
+      };
+      state.setTab(state.tab === "setupWizard" ? "setupWizard" : "modelManager");
+    } catch (err) {
+      state.setupModelMessage = { kind: "error", text: String(err) };
+    } finally {
+      state.setupModelSaving = false;
+      requestHostUpdate?.();
+    }
+  };
+  const renderSetupWizardSection = () =>
+    renderSetupWizard({
+      connected: state.connected,
+      busy: state.setupWizardBusy,
+      sessionId: state.setupWizardSessionId,
+      status: state.setupWizardStatus,
+      error: state.setupWizardError,
+      step: state.setupWizardStep,
+      config: state.configForm ?? state.configSnapshot?.config ?? null,
+      channelsSnapshot: state.channelsSnapshot,
+      modelAuthStatus: state.modelAuthStatusResult,
+      configReady: Boolean(state.configForm || state.configSnapshot?.hash),
+      setupModelProviderId: state.setupModelProviderId,
+      setupModelPlanId: state.setupModelPlanId,
+      setupModelApiKey: state.setupModelApiKey,
+      setupModelSaving: state.setupModelSaving,
+      setupModelMessage: state.setupModelMessage,
+      onSetupModelProviderChange: (providerId) => {
+        state.setupModelProviderId = providerId;
+        state.setupModelPlanId = getDefaultQuickModelPlanId(providerId);
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelPlanChange: (planId) => {
+        state.setupModelPlanId = planId;
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelApiKeyChange: (apiKey) => {
+        state.setupModelApiKey = apiKey;
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelApply: () => {
+        void applyQuickModelSetup();
+      },
+      onStart: (mode) => {
+        void startSetupWizard(state, mode).then((ok) => {
+          if (ok) {
+            refreshAfterSetupWizard();
+            return;
+          }
+          requestHostUpdate?.();
+        });
+      },
+      onSubmit: (value) => {
+        void submitSetupWizardAnswer(state, value).then((ok) => {
+          if (ok) {
+            refreshAfterSetupWizard();
+            return;
+          }
+          requestHostUpdate?.();
+        });
+      },
+      onCancel: () => {
+        void cancelSetupWizard(state).finally(() => requestHostUpdate?.());
+      },
+      onRefresh: () => {
+        state.setTab("setupWizard");
+      },
+    });
   const renderConfigTabForActiveTab = () => {
     switch (state.tab) {
       case "config": {
@@ -1054,8 +1455,9 @@ export function renderApp(state: AppViewState) {
             fastMode,
             onModelChange: () => {
               state.configSettingsMode = "advanced";
-              state.tab = "aiAgents" as import("./navigation.ts").Tab;
               state.aiAgentsActiveSection = "models";
+              state.aiAgentsActiveSubsection = null;
+              state.setTab(resolveNavigationMode(state) === "oui" ? "modelManager" : "aiAgents");
               requestHostUpdate?.();
             },
             onThinkingChange: (level) => {
@@ -1293,6 +1695,10 @@ export function renderApp(state: AppViewState) {
           navRootLabel: "AI & Agents",
           includeSections: [...AI_AGENTS_SECTION_KEYS],
         });
+      case "setupWizard":
+        return renderSetupWizardSection();
+      case "modelManager":
+        return renderModelManagerSection();
       default:
         return nothing;
     }
@@ -1408,6 +1814,9 @@ export function renderApp(state: AppViewState) {
               .basePath=${state.basePath}
               .agentLabel=${dashboardHeaderContext.agentLabel}
               @navigate=${(event: CustomEvent<Tab>) => {
+                if (resolveNavigationMode(state) === "oui" && !isOuiTab(event.detail)) {
+                  state.applySettings({ ...state.settings, navigationMode: "original" });
+                }
                 state.setTab(event.detail);
               }}
             ></dashboard-header>
@@ -1441,8 +1850,8 @@ export function renderApp(state: AppViewState) {
                   : html`
                       <img
                         class="sidebar-brand__logo"
-                        src="${agentLogoUrl(basePath)}"
-                        alt="OpenClaw"
+                        src="${brandLogoSrc}"
+                        alt=${isOuiNavigationMode ? "OUI" : "OpenClaw"}
                       />
                       <span class="sidebar-brand__copy">
                         <span class="sidebar-brand__eyebrow">${t("nav.control")}</span>
@@ -1466,44 +1875,12 @@ export function renderApp(state: AppViewState) {
                 >
               </button>
             </div>
+            ${renderNavigationModeSwitch(state, navCollapsed)}
             <div class="sidebar-shell__body">
               <nav class="sidebar-nav">
-                ${TAB_GROUPS.map((group) => {
-                  const isGroupCollapsed = state.settings.navGroupsCollapsed[group.label] ?? false;
-                  const hasActiveTab = group.tabs.some((tab) => tab === state.tab);
-                  const showItems = navCollapsed || hasActiveTab || !isGroupCollapsed;
-
-                  return html`
-                    <section class="nav-section ${!showItems ? "nav-section--collapsed" : ""}">
-                      ${!navCollapsed
-                        ? html`
-                            <button
-                              class="nav-section__label"
-                              @click=${() => {
-                                const next = { ...state.settings.navGroupsCollapsed };
-                                next[group.label] = !isGroupCollapsed;
-                                state.applySettings({
-                                  ...state.settings,
-                                  navGroupsCollapsed: next,
-                                });
-                              }}
-                              aria-expanded=${showItems}
-                            >
-                              <span class="nav-section__label-text"
-                                >${t(`nav.${group.label}`)}</span
-                              >
-                              <span class="nav-section__chevron"> ${icons.chevronDown} </span>
-                            </button>
-                          `
-                        : nothing}
-                      <div class="nav-section__items">
-                        ${group.tabs.map((tab) =>
-                          renderTab(state, tab, { collapsed: navCollapsed }),
-                        )}
-                      </div>
-                    </section>
-                  `;
-                })}
+                ${resolveNavigationMode(state) === "oui"
+                  ? renderOuiNavigation(state, navCollapsed)
+                  : renderOriginalNavigation(state, navCollapsed)}
               </nav>
             </div>
             <div class="sidebar-shell__footer">
