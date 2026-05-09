@@ -101,6 +101,8 @@ type ConnectFrame = {
   id?: string;
   method?: string;
   params?: {
+    minProtocol?: number;
+    maxProtocol?: number;
     auth?: { token?: string; password?: string; deviceToken?: string };
     scopes?: string[];
   };
@@ -274,6 +276,8 @@ describe("GatewayBrowserClient", () => {
     const { connectFrame } = await startConnect(client);
 
     expect(connectFrame.method).toBe("connect");
+    expect(connectFrame.params?.minProtocol).toBe(3);
+    expect(connectFrame.params?.maxProtocol).toBe(4);
     expect(connectFrame.params?.scopes).toEqual([...CONTROL_UI_OPERATOR_SCOPES]);
   });
 

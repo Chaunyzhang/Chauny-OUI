@@ -150,6 +150,8 @@ type SelectedConnectAuth = {
 };
 
 const CONTROL_UI_OPERATOR_ROLE = "operator";
+const CONTROL_UI_MIN_PROTOCOL_VERSION = 3 as const;
+const CONTROL_UI_MAX_PROTOCOL_VERSION = 4 as const;
 
 export const CONTROL_UI_OPERATOR_SCOPES = [
   "operator.admin",
@@ -182,8 +184,8 @@ export type GatewayConnectClientInfo = {
 };
 
 export type GatewayConnectParams = {
-  minProtocol: 4;
-  maxProtocol: 4;
+  minProtocol: typeof CONTROL_UI_MIN_PROTOCOL_VERSION;
+  maxProtocol: typeof CONTROL_UI_MAX_PROTOCOL_VERSION;
   client: GatewayConnectClientInfo;
   role: string;
   scopes: string[];
@@ -452,8 +454,8 @@ export class GatewayBrowserClient {
 
   private buildConnectParams(plan: ConnectPlan): GatewayConnectParams {
     return {
-      minProtocol: 4,
-      maxProtocol: 4,
+      minProtocol: CONTROL_UI_MIN_PROTOCOL_VERSION,
+      maxProtocol: CONTROL_UI_MAX_PROTOCOL_VERSION,
       client: plan.client,
       role: plan.role,
       scopes: plan.scopes,
