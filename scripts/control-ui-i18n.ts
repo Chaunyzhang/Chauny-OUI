@@ -973,7 +973,7 @@ type RunProcessOptions = {
 function resolveSpawnCommand(executable: string, args: string[]) {
   if (process.platform === "win32" && executable === "pnpm") {
     return {
-      args: ["/d", "/s", "/c", executable, ...args],
+      args: ["/d", "/s", "/c", "corepack", executable, ...args],
       executable: "cmd.exe",
     };
   }

@@ -238,7 +238,7 @@ describe("i18n", () => {
     expect(zhStrings.get("nav.agent")).toBe("agent");
     expect(zhStrings.get("tabs.agents")).toBe("Agents（助手）");
     expect(zhStrings.get("tabs.sessions")).toBe("Sessions");
-    expect(zhStrings.get("tabs.skills")).toBe("扩展能力");
+    expect(zhStrings.get("tabs.skills")).toBe("skill");
     expect(zhStrings.get("tabs.nodes")).toBe("设备");
     expect(zhStrings.get("sessionsView.model")).toBe("model");
     expect(zhStrings.get("sessionsView.provider")).toBe("provider");
@@ -249,7 +249,7 @@ describe("i18n", () => {
     expect(zhStrings.get("configQuick.model.model")).toBe("model（AI 引擎）");
     expect(zhStrings.get("configQuick.channels.title")).toBe("消息入口");
     expect(zhStrings.get("configQuick.automations.skillsInstalled")).toBe(
-      "{count} 个扩展能力已安装",
+      "已安装 {count} 个 skill",
     );
     expect(zhStrings.get("configQuick.appearance.modes.light")).toBe("浅色");
     expect(zhStrings.get("configQuick.personal.chooseImage")).toBe("选择图片");
@@ -258,6 +258,7 @@ describe("i18n", () => {
     const forbiddenTerms = [
       "代理",
       "技能",
+      "扩展能力",
       "令牌",
       "捆绑包",
       "模型",
@@ -288,6 +289,7 @@ describe("i18n", () => {
     await translate.i18n.setLocale("zh-CN");
     expect(localizeConfigCopy("No changes")).toBe("无更改");
     expect(localizeConfigCopy("Approval Agent Filter")).toBe("只转发哪些 agent");
+    expect(localizeConfigCopy("Skills")).toBe("skill");
     expect(
       localizeConfigCopy("Raw mode disabled (snapshot cannot safely round-trip raw text)."),
     ).toBe("Raw mode 已禁用（快照无法安全往返保存原始文本）。");
