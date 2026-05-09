@@ -58,6 +58,7 @@ export type UiSettings = {
   theme: ThemeName;
   themeMode: ThemeMode;
   chatFocusMode: boolean;
+  chatParallelMode?: boolean;
   chatShowThinking: boolean;
   chatShowToolCalls: boolean;
   splitRatio: number; // Sidebar split ratio (0.4 to 0.7, default 0.6)
@@ -199,6 +200,7 @@ export function loadSettings(): UiSettings {
     theme: "claw",
     themeMode: "system",
     chatFocusMode: false,
+    chatParallelMode: false,
     chatShowThinking: true,
     chatShowToolCalls: true,
     splitRatio: 0.6,
@@ -237,6 +239,10 @@ export function loadSettings(): UiSettings {
       themeMode: mode,
       chatFocusMode:
         typeof parsed.chatFocusMode === "boolean" ? parsed.chatFocusMode : defaults.chatFocusMode,
+      chatParallelMode:
+        typeof parsed.chatParallelMode === "boolean"
+          ? parsed.chatParallelMode
+          : defaults.chatParallelMode,
       chatShowThinking:
         typeof parsed.chatShowThinking === "boolean"
           ? parsed.chatShowThinking
@@ -379,6 +385,7 @@ function persistSettings(next: UiSettings) {
     theme: next.theme,
     themeMode: next.themeMode,
     chatFocusMode: next.chatFocusMode,
+    chatParallelMode: next.chatParallelMode ?? false,
     chatShowThinking: next.chatShowThinking,
     chatShowToolCalls: next.chatShowToolCalls,
     splitRatio: next.splitRatio,

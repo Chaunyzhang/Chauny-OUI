@@ -368,6 +368,7 @@ export const ko: TranslationMap = {
     builtIn: "내장",
   },
   nav: {
+    oui: "OUI",
     chat: "채팅",
     control: "Control",
     agent: "에이전트",
@@ -377,6 +378,7 @@ export const ko: TranslationMap = {
     resize: "사이드바 크기 조절",
   },
   tabs: {
+    ouiChat: "OUI Chat",
     agents: "에이전트",
     overview: "개요",
     channels: "채널",
@@ -398,6 +400,7 @@ export const ko: TranslationMap = {
     dreams: "드리밍",
   },
   subtitles: {
+    ouiChat: "Agent-first parallel chat.",
     agents: "워크스페이스, 도구, 정체성.",
     overview: "상태, 진입점, 상태 정보.",
     channels: "채널 및 설정.",

@@ -9,6 +9,8 @@ import {
   renderChatControls,
   renderChatMobileToggle,
   renderChatSessionSelect,
+  renderOuiChatControls,
+  renderOuiChatSessionSelectCompact,
   renderTab,
   resolveAssistantAttachmentAuthToken,
   resolveDashboardHeaderContext,
@@ -129,6 +131,7 @@ import { icons } from "./icons.ts";
 import { createLazyView, renderLazyView } from "./lazy-view.ts";
 import {
   normalizeBasePath,
+  isChatTab,
   TAB_GROUPS,
   subtitleForTab,
   titleForTab,
@@ -168,6 +171,7 @@ import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderLoginGate } from "./views/login-gate.ts";
 import { renderOverview } from "./views/overview.ts";
+import { renderParallelChat } from "./views/parallel-chat.ts";
 
 let _pendingUpdate: (() => void) | undefined;
 
@@ -673,8 +677,9 @@ export function renderApp(state: AppViewState) {
   const sessionsCount = state.sessionsResult?.count ?? null;
   const cronNext = state.cronStatus?.nextWakeAtMs ?? null;
   const chatDisabledReason = state.connected ? null : t("chat.disconnected");
-  const isChat = state.tab === "chat";
-  const chatFocus = isChat && (state.settings.chatFocusMode || state.onboarding);
+  const isChat = isChatTab(state.tab);
+  const chatFocus =
+    isChat && !state.chatParallelMode && (state.settings.chatFocusMode || state.onboarding);
   const navDrawerOpen = state.navDrawerOpen && !chatFocus && !state.onboarding;
   const navCollapsed = state.settings.navCollapsed && !navDrawerOpen;
   const dashboardHeaderContext = resolveDashboardHeaderContext(state);
@@ -1591,7 +1596,9 @@ export function renderApp(state: AppViewState) {
             >
               <div>
                 ${isChat
-                  ? renderChatSessionSelect(state)
+                  ? state.tab === "ouiChat"
+                    ? renderOuiChatSessionSelectCompact(state)
+                    : renderChatSessionSelect(state)
                   : html`<div class="page-title">${titleForTab(state.tab)}</div>`}
                 ${isChat ? nothing : html`<div class="page-sub">${subtitleForTab(state.tab)}</div>`}
               </div>
@@ -1626,7 +1633,11 @@ export function renderApp(state: AppViewState) {
                 ${state.lastError
                   ? html`<div class="pill danger">${state.lastError}</div>`
                   : nothing}
-                ${isChat ? renderChatControls(state) : nothing}
+                ${isChat
+                  ? state.tab === "ouiChat"
+                    ? renderOuiChatControls(state)
+                    : renderChatControls(state)
+                  : nothing}
               </div>
             </section>`}
         ${state.tab === "overview"
@@ -2411,10 +2422,10 @@ export function renderApp(state: AppViewState) {
               }),
             )
           : nothing}
-        ${state.tab === "chat"
+        ${isChat
           ? renderMeasured(
               state,
-              "chat",
+              state.tab,
               {
                 messageCount: state.chatMessages.length,
                 toolMessageCount: state.chatToolMessages.length,
@@ -2422,129 +2433,132 @@ export function renderApp(state: AppViewState) {
                 queueCount: state.chatQueue.length,
               },
               () =>
-                renderChat({
-                  sessionKey: state.sessionKey,
-                  onSessionKeyChange: (next) => {
-                    switchChatSession(state, next);
-                  },
-                  thinkingLevel: state.chatThinkingLevel,
-                  showThinking,
-                  showToolCalls,
-                  loading: state.chatLoading,
-                  sending: state.chatSending,
-                  compactionStatus: state.compactionStatus,
-                  fallbackStatus: state.fallbackStatus,
-                  assistantAvatarUrl: chatAvatarUrl,
-                  messages: state.chatMessages,
-                  sideResult: state.chatSideResult,
-                  toolMessages: state.chatToolMessages,
-                  streamSegments: state.chatStreamSegments,
-                  stream: state.chatStream,
-                  streamStartedAt: state.chatStreamStartedAt,
-                  draft: state.chatMessage,
-                  queue: state.chatQueue,
-                  realtimeTalkActive: state.realtimeTalkActive,
-                  realtimeTalkStatus: state.realtimeTalkStatus,
-                  realtimeTalkDetail: state.realtimeTalkDetail,
-                  realtimeTalkTranscript: state.realtimeTalkTranscript,
-                  connected: state.connected,
-                  canSend: state.connected,
-                  disabledReason: chatDisabledReason,
-                  error: state.lastError,
-                  onDismissError: () => dismissChatError(state),
-                  sessions: state.sessionsResult,
-                  focusMode: chatFocus,
-                  autoExpandToolCalls: false,
-                  onRefresh: () => {
-                    state.chatSideResult = null;
-                    state.resetToolStream();
-                    return refreshChat(state, { awaitHistory: true, scheduleScroll: false });
-                  },
-                  onToggleFocusMode: () => {
-                    if (state.onboarding) {
-                      return;
-                    }
-                    state.applySettings({
-                      ...state.settings,
-                      chatFocusMode: !state.settings.chatFocusMode,
-                    });
-                  },
-                  onChatScroll: (event) => state.handleChatScroll(event),
-                  getDraft: () => state.chatMessage,
-                  onDraftChange: (next) => state.handleChatDraftChange(next),
-                  onRequestUpdate: requestHostUpdate,
-                  onHistoryKeydown: (input) => state.handleChatInputHistoryKey(input),
-                  attachments: state.chatAttachments,
-                  onAttachmentsChange: (next) => (state.chatAttachments = next),
-                  onSend: () => state.handleSendChat(),
-                  onCompact: () => state.handleSendChat("/compact", { restoreDraft: true }),
-                  onOpenSessionCheckpoints: () => {
-                    state.sessionsExpandedCheckpointKey = state.sessionKey;
-                    state.setTab("sessions" as import("./navigation.ts").Tab);
-                    void loadSessions(state, {
-                      activeMinutes: 0,
-                      limit: 0,
-                      includeGlobal: true,
-                      includeUnknown: true,
-                    });
-                  },
-                  onToggleRealtimeTalk: () => state.toggleRealtimeTalk(),
-                  canAbort: hasAbortableSessionRun(state),
-                  onAbort: () => void state.handleAbortChat(),
-                  onQueueRemove: (id) => state.removeQueuedMessage(id),
-                  onQueueSteer: (id) => void state.steerQueuedChatMessage(id),
-                  onDismissSideResult: () => {
-                    state.chatSideResult = null;
-                  },
-                  onNewSession: () => void createChatSession(state),
-                  onClearHistory: async () => {
-                    if (!state.client || !state.connected) {
-                      return;
-                    }
-                    try {
-                      await state.client.request("sessions.reset", { key: state.sessionKey });
-                      state.chatMessages = [];
-                      state.chatSideResult = null;
-                      state.chatStream = null;
-                      state.chatRunId = null;
-                      await loadChatHistory(state);
-                    } catch (err) {
-                      state.lastError = String(err);
-                    }
-                  },
-                  agentsList: state.agentsList,
-                  currentAgentId: resolvedAgentId ?? "main",
-                  onAgentChange: (agentId: string) => {
-                    switchChatSession(state, buildAgentMainSessionKey({ agentId }));
-                  },
-                  onNavigateToAgent: () => {
-                    state.agentsSelectedId = resolvedAgentId;
-                    state.setTab("agents" as import("./navigation.ts").Tab);
-                  },
-                  onSessionSelect: (key: string) => {
-                    switchChatSession(state, key);
-                  },
-                  showNewMessages: state.chatNewMessagesBelow && !state.chatManualRefreshInFlight,
-                  onScrollToBottom: () => state.scrollToBottom(),
-                  // Sidebar props for tool output viewing
-                  sidebarOpen: state.sidebarOpen,
-                  sidebarContent: state.sidebarContent,
-                  sidebarError: state.sidebarError,
-                  splitRatio: state.splitRatio,
-                  canvasPluginSurfaceUrl: state.hello?.pluginSurfaceUrls?.canvas ?? null,
-                  onOpenSidebar: (content) => state.handleOpenSidebar(content),
-                  onCloseSidebar: () => state.handleCloseSidebar(),
-                  onSplitRatioChange: (ratio: number) => state.handleSplitRatioChange(ratio),
-                  assistantName: state.assistantName,
-                  assistantAvatar: effectiveAssistantAvatar,
-                  userName: state.userName ?? null,
-                  userAvatar: state.userAvatar ?? null,
-                  localMediaPreviewRoots: state.localMediaPreviewRoots,
-                  embedSandboxMode: state.embedSandboxMode,
-                  allowExternalEmbedUrls: state.allowExternalEmbedUrls,
-                  assistantAttachmentAuthToken: resolveAssistantAttachmentAuthToken(state),
-                  basePath: state.basePath ?? "",
-                }),
+                state.tab === "ouiChat" && state.chatParallelMode
+                  ? renderParallelChat(state)
+                  : renderChat({
+                      sessionKey: state.sessionKey,
+                      onSessionKeyChange: (next) => {
+                        switchChatSession(state, next);
+                      },
+                      thinkingLevel: state.chatThinkingLevel,
+                      showThinking,
+                      showToolCalls,
+                      loading: state.chatLoading,
+                      sending: state.chatSending,
+                      compactionStatus: state.compactionStatus,
+                      fallbackStatus: state.fallbackStatus,
+                      assistantAvatarUrl: chatAvatarUrl,
+                      messages: state.chatMessages,
+                      sideResult: state.chatSideResult,
+                      toolMessages: state.chatToolMessages,
+                      streamSegments: state.chatStreamSegments,
+                      stream: state.chatStream,
+                      streamStartedAt: state.chatStreamStartedAt,
+                      draft: state.chatMessage,
+                      queue: state.chatQueue,
+                      realtimeTalkActive: state.realtimeTalkActive,
+                      realtimeTalkStatus: state.realtimeTalkStatus,
+                      realtimeTalkDetail: state.realtimeTalkDetail,
+                      realtimeTalkTranscript: state.realtimeTalkTranscript,
+                      connected: state.connected,
+                      canSend: state.connected,
+                      disabledReason: chatDisabledReason,
+                      error: state.lastError,
+                      onDismissError: () => dismissChatError(state),
+                      sessions: state.sessionsResult,
+                      focusMode: chatFocus,
+                      autoExpandToolCalls: false,
+                      onRefresh: () => {
+                        state.chatSideResult = null;
+                        state.resetToolStream();
+                        return refreshChat(state, { awaitHistory: true, scheduleScroll: false });
+                      },
+                      onToggleFocusMode: () => {
+                        if (state.onboarding) {
+                          return;
+                        }
+                        state.applySettings({
+                          ...state.settings,
+                          chatFocusMode: !state.settings.chatFocusMode,
+                        });
+                      },
+                      onChatScroll: (event) => state.handleChatScroll(event),
+                      getDraft: () => state.chatMessage,
+                      onDraftChange: (next) => state.handleChatDraftChange(next),
+                      onRequestUpdate: requestHostUpdate,
+                      onHistoryKeydown: (input) => state.handleChatInputHistoryKey(input),
+                      attachments: state.chatAttachments,
+                      onAttachmentsChange: (next) => (state.chatAttachments = next),
+                      onSend: () => state.handleSendChat(),
+                      onCompact: () => state.handleSendChat("/compact", { restoreDraft: true }),
+                      onOpenSessionCheckpoints: () => {
+                        state.sessionsExpandedCheckpointKey = state.sessionKey;
+                        state.setTab("sessions" as import("./navigation.ts").Tab);
+                        void loadSessions(state, {
+                          activeMinutes: 0,
+                          limit: 0,
+                          includeGlobal: true,
+                          includeUnknown: true,
+                        });
+                      },
+                      onToggleRealtimeTalk: () => state.toggleRealtimeTalk(),
+                      canAbort: hasAbortableSessionRun(state),
+                      onAbort: () => void state.handleAbortChat(),
+                      onQueueRemove: (id) => state.removeQueuedMessage(id),
+                      onQueueSteer: (id) => void state.steerQueuedChatMessage(id),
+                      onDismissSideResult: () => {
+                        state.chatSideResult = null;
+                      },
+                      onNewSession: () => void createChatSession(state),
+                      onClearHistory: async () => {
+                        if (!state.client || !state.connected) {
+                          return;
+                        }
+                        try {
+                          await state.client.request("sessions.reset", { key: state.sessionKey });
+                          state.chatMessages = [];
+                          state.chatSideResult = null;
+                          state.chatStream = null;
+                          state.chatRunId = null;
+                          await loadChatHistory(state);
+                        } catch (err) {
+                          state.lastError = String(err);
+                        }
+                      },
+                      agentsList: state.agentsList,
+                      currentAgentId: resolvedAgentId ?? "main",
+                      onAgentChange: (agentId: string) => {
+                        switchChatSession(state, buildAgentMainSessionKey({ agentId }));
+                      },
+                      onNavigateToAgent: () => {
+                        state.agentsSelectedId = resolvedAgentId;
+                        state.setTab("agents" as import("./navigation.ts").Tab);
+                      },
+                      onSessionSelect: (key: string) => {
+                        switchChatSession(state, key);
+                      },
+                      showNewMessages:
+                        state.chatNewMessagesBelow && !state.chatManualRefreshInFlight,
+                      onScrollToBottom: () => state.scrollToBottom(),
+                      // Sidebar props for tool output viewing
+                      sidebarOpen: state.sidebarOpen,
+                      sidebarContent: state.sidebarContent,
+                      sidebarError: state.sidebarError,
+                      splitRatio: state.splitRatio,
+                      canvasPluginSurfaceUrl: state.hello?.pluginSurfaceUrls?.canvas ?? null,
+                      onOpenSidebar: (content) => state.handleOpenSidebar(content),
+                      onCloseSidebar: () => state.handleCloseSidebar(),
+                      onSplitRatioChange: (ratio: number) => state.handleSplitRatioChange(ratio),
+                      assistantName: state.assistantName,
+                      assistantAvatar: effectiveAssistantAvatar,
+                      userName: state.userName ?? null,
+                      userAvatar: state.userAvatar ?? null,
+                      localMediaPreviewRoots: state.localMediaPreviewRoots,
+                      embedSandboxMode: state.embedSandboxMode,
+                      allowExternalEmbedUrls: state.allowExternalEmbedUrls,
+                      assistantAttachmentAuthToken: resolveAssistantAttachmentAuthToken(state),
+                      basePath: state.basePath ?? "",
+                    }),
             )
           : nothing}
         ${renderConfigTabForActiveTab()}

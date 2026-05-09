@@ -110,6 +110,8 @@ type GatewayHost = {
   execApprovalError: string | null;
   updateAvailable: UpdateAvailable | null;
   reconcileWebPushState?: () => Promise<void> | void;
+  handleParallelChatEvent?: (payload: ChatEventPayload | undefined) => void;
+  handleParallelSessionMessageEvent?: (payload: { sessionKey?: string } | undefined) => void;
 };
 
 type GatewayHostWithDeferredSessionMessageReload = GatewayHost & {
@@ -670,6 +672,7 @@ function isEventForDifferentActiveRun(
 }
 
 function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | undefined) {
+  host.handleParallelChatEvent?.(payload);
   if (payload?.sessionKey) {
     setLastActiveSessionKey(
       host as unknown as Parameters<typeof setLastActiveSessionKey>[0],
@@ -725,6 +728,7 @@ function handleSessionMessageGatewayEvent(
   host: GatewayHost,
   payload: { sessionKey?: string } | undefined,
 ) {
+  host.handleParallelSessionMessageEvent?.(payload);
   applySessionsChangedEvent(host as unknown as SessionsState, payload);
   const deferredReloadHost = host as GatewayHostWithDeferredSessionMessageReload;
   const sessionKey = payload?.sessionKey?.trim();

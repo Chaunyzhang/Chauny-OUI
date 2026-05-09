@@ -56,6 +56,7 @@ import { syncCustomThemeStyleTag } from "./custom-theme.ts";
 import { isMonitoredAuthProvider } from "./model-auth-helpers.ts";
 import {
   inferBasePathFromPathname,
+  isChatTab,
   normalizeBasePath,
   normalizePath,
   pathForTab,
@@ -398,6 +399,7 @@ export async function refreshActiveTab(host: SettingsHost) {
         ]);
         break;
       case "chat":
+      case "ouiChat":
         await refreshChat(host as unknown as Parameters<typeof refreshChat>[0]);
         scheduleChatScroll(
           host as unknown as Parameters<typeof scheduleChatScroll>[0],
@@ -522,7 +524,7 @@ export function syncTabWithLocation(host: SettingsHost, replace: boolean) {
   if (typeof window === "undefined") {
     return;
   }
-  const resolved = tabFromPath(window.location.pathname, host.basePath) ?? "chat";
+  const resolved = tabFromPath(window.location.pathname, host.basePath) ?? "ouiChat";
   setTabFromRoute(host, resolved);
   syncUrlWithTab(host, resolved, replace);
 }
@@ -572,11 +574,11 @@ function applyTabSelection(
   }
 
   // Cleanup chat module state when navigating away from chat
-  if (prev === "chat" && next !== "chat") {
+  if (isChatTab(prev) && !isChatTab(next)) {
     resetChatViewState();
   }
 
-  if (next === "chat") {
+  if (isChatTab(next)) {
     host.chatHasAutoScrolled = false;
   }
   (next === "logs" ? startLogsPolling : stopLogsPolling)(
@@ -605,7 +607,7 @@ export function syncUrlWithTab(host: SettingsHost, tab: Tab, replace: boolean) {
   const currentPath = normalizePath(pathname);
   const url = new URL(href);
 
-  if (tab === "chat" && host.sessionKey) {
+  if (isChatTab(tab) && host.sessionKey) {
     url.searchParams.set("session", host.sessionKey);
   } else {
     url.searchParams.delete("session");

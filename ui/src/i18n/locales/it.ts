@@ -371,6 +371,7 @@ export const it: TranslationMap = {
     builtIn: "Integrato",
   },
   nav: {
+    oui: "OUI",
     chat: "Chat",
     control: "Controllo",
     agent: "Agente",
@@ -380,6 +381,7 @@ export const it: TranslationMap = {
     resize: "Ridimensiona barra laterale",
   },
   tabs: {
+    ouiChat: "OUI Chat",
     agents: "Agenti",
     overview: "Panoramica",
     channels: "Canali",
@@ -401,6 +403,7 @@ export const it: TranslationMap = {
     dreams: "Sogni",
   },
   subtitles: {
+    ouiChat: "Agent-first parallel chat.",
     agents: "Spazi di lavoro, strumenti, identità.",
     overview: "Stato, punti di ingresso, integrità.",
     channels: "Canali e impostazioni.",

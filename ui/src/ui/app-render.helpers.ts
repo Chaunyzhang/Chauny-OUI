@@ -3,12 +3,19 @@ import { t } from "../i18n/index.ts";
 import { refreshChat, refreshChatAvatar } from "./app-chat.ts";
 import { syncUrlWithSessionKey } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
+import { resolveChatModelSelectState } from "./chat-model-select-state.ts";
 import {
   isCronSessionKey,
   parseSessionKey,
   renderChatSessionSelect as renderChatSessionSelectBase,
+  resolveChatAgentFilterId,
+  resolveChatAgentFilterOptions,
+  resolveChatThinkingSelectState,
+  resolvePreferredSessionForAgent,
   resolveSessionDisplayName,
   resolveSessionOptionGroups,
+  switchChatModel,
+  switchChatThinkingLevel,
 } from "./chat/session-controls.ts";
 import { refreshSlashCommands } from "./chat/slash-commands.ts";
 import { resolveControlUiAuthToken } from "./control-ui-auth.ts";
@@ -192,12 +199,12 @@ export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: bo
           return;
         }
         event.preventDefault();
-        if (tab === "chat") {
+        if (tab === "chat" || tab === "ouiChat") {
           if (!state.sessionKey) {
             const mainSessionKey = resolveSidebarChatSessionKey(state);
             resetChatStateForSessionSwitch(state, mainSessionKey);
           }
-          if (state.tab !== "chat") {
+          if (state.tab !== tab) {
             void state.loadAssistantIdentity();
           }
         }
@@ -251,6 +258,259 @@ function renderCronFilterIcon(hiddenCount: number) {
 
 export function renderChatSessionSelect(state: AppViewState) {
   return renderChatSessionSelectBase(state, switchChatSession);
+}
+
+function renderOuiSelect(params: {
+  className: string;
+  title: string;
+  detail: string;
+  value: string;
+  disabled?: boolean;
+  options: Array<{ value: string; label: string; title?: string }>;
+  onChange: (value: string) => void | Promise<void>;
+}) {
+  return html`
+    <label class="oui-chat-control ${params.className}">
+      <span class="oui-chat-control__meta">
+        <span class="oui-chat-control__title">${params.title}</span>
+        <span class="oui-chat-control__detail">${params.detail}</span>
+      </span>
+      <span class="field">
+        <select
+          aria-label=${params.title}
+          title=${params.options.find((option) => option.value === params.value)?.label ??
+          params.value}
+          .value=${params.value}
+          ?disabled=${params.disabled}
+          @change=${(event: Event) => {
+            void params.onChange((event.target as HTMLSelectElement).value);
+          }}
+        >
+          ${params.options.map(
+            (option) => html`
+              <option
+                value=${option.value}
+                title=${option.title ?? option.label}
+                ?selected=${option.value === params.value}
+              >
+                ${option.label}
+              </option>
+            `,
+          )}
+        </select>
+      </span>
+    </label>
+  `;
+}
+
+export function renderOuiChatSessionSelectCompact(state: AppViewState) {
+  const sessionGroups = resolveSessionOptionGroups(state, state.sessionKey, state.sessionsResult);
+  const agentOptions = resolveChatAgentFilterOptions(state);
+  const activeAgentId = resolveChatAgentFilterId(state, state.sessionKey);
+  const sessionOptions = sessionGroups.flatMap((group) =>
+    group.options.map((entry) => ({ value: entry.key, label: entry.label, title: entry.title })),
+  );
+  const {
+    currentOverride: modelOverride,
+    defaultLabel: modelDefaultLabel,
+    options: modelOptionsRaw,
+  } = resolveChatModelSelectState(state);
+  const {
+    currentOverride: thinkingOverride,
+    defaultLabel: thinkingDefaultLabel,
+    options: thinkingOptionsRaw,
+  } = resolveChatThinkingSelectState(state);
+  const busy =
+    state.chatLoading || state.chatSending || Boolean(state.chatRunId) || state.chatStream !== null;
+  const modelDisabled =
+    !state.connected ||
+    busy ||
+    Boolean(state.chatModelSwitchPromises?.[state.sessionKey]) ||
+    (state.chatModelsLoading && modelOptionsRaw.length === 0) ||
+    !state.client;
+  const thinkingDisabled = !state.connected || busy || !state.client;
+  const modelOptions = [
+    { value: "", label: modelDefaultLabel },
+    ...modelOptionsRaw.map((entry) => ({ value: entry.value, label: entry.label })),
+  ];
+  const thinkingOptions = [
+    { value: "", label: thinkingDefaultLabel },
+    ...thinkingOptionsRaw.map((entry) => ({ value: entry.value, label: entry.label })),
+  ];
+
+  return html`
+    <div class="oui-chat-controls oui-chat-controls--compact">
+      ${renderOuiSelect({
+        className: "oui-chat-control--agent",
+        title: "Agent",
+        detail: "Assistant",
+        value: activeAgentId,
+        options:
+          agentOptions.length > 0
+            ? agentOptions.map((entry) => ({ value: entry.id, label: entry.label }))
+            : [{ value: activeAgentId, label: activeAgentId }],
+        disabled: !state.connected || agentOptions.length <= 1,
+        onChange: (nextAgentId) =>
+          switchChatSession(state, resolvePreferredSessionForAgent(state, nextAgentId)),
+      })}
+      ${renderOuiSelect({
+        className: "oui-chat-control--thinking",
+        title: "Thinking",
+        detail: "Reasoning",
+        value: thinkingOverride,
+        options: thinkingOptions,
+        disabled: thinkingDisabled,
+        onChange: async (next) => {
+          await switchChatThinkingLevel(state, next);
+        },
+      })}
+      <details class="oui-chat-settings">
+        <summary class="btn btn--sm btn--icon oui-chat-settings__button">${icons.settings}</summary>
+        <div class="oui-chat-settings__popover">
+          <div class="oui-chat-settings__grid">
+            ${renderOuiSelect({
+              className: "oui-chat-control--session",
+              title: "Session",
+              detail: "Context",
+              value: state.sessionKey,
+              options:
+                sessionOptions.length > 0
+                  ? sessionOptions
+                  : [{ value: state.sessionKey, label: state.sessionKey }],
+              disabled: !state.connected || sessionOptions.length === 0,
+              onChange: (next) => {
+                if (state.sessionKey !== next) {
+                  switchChatSession(state, next);
+                }
+              },
+            })}
+            ${renderOuiSelect({
+              className: "oui-chat-control--model",
+              title: "Model",
+              detail: "Answer engine",
+              value: modelOverride,
+              options: modelOptions,
+              disabled: modelDisabled,
+              onChange: async (next) => {
+                await switchChatModel(state, next);
+              },
+            })}
+          </div>
+          <div class="oui-chat-settings__toggles">
+            <button
+              class="oui-chat-settings__toggle ${state.settings.chatShowThinking
+                ? "oui-chat-settings__toggle--active"
+                : ""}"
+              ?disabled=${state.onboarding}
+              @click=${() => {
+                if (!state.onboarding) {
+                  state.applySettings({
+                    ...state.settings,
+                    chatShowThinking: !state.settings.chatShowThinking,
+                  });
+                }
+              }}
+            >
+              <span>Show thinking</span>
+              <span class="oui-chat-settings__switch"></span>
+            </button>
+            <button
+              class="oui-chat-settings__toggle ${state.settings.chatShowToolCalls
+                ? "oui-chat-settings__toggle--active"
+                : ""}"
+              ?disabled=${state.onboarding}
+              @click=${() => {
+                if (!state.onboarding) {
+                  state.applySettings({
+                    ...state.settings,
+                    chatShowToolCalls: !state.settings.chatShowToolCalls,
+                  });
+                }
+              }}
+            >
+              <span>Show tools</span>
+              <span class="oui-chat-settings__switch"></span>
+            </button>
+            <button
+              class="oui-chat-settings__toggle ${state.sessionsHideCron
+                ? "oui-chat-settings__toggle--active"
+                : ""}"
+              @click=${() => {
+                state.sessionsHideCron = !(state.sessionsHideCron ?? true);
+              }}
+            >
+              <span>Hide cron sessions</span>
+              <span class="oui-chat-settings__switch"></span>
+            </button>
+          </div>
+        </div>
+      </details>
+    </div>
+    <div class="chat-controls__session-notice" role="status" aria-live="polite">
+      ${state.sessionSwitchNotice?.text ?? ""}
+    </div>
+  `;
+}
+
+export function renderOuiChatControls(state: AppViewState) {
+  const parallelLabel = state.chatParallelMode ? "Single view" : "Four-pane view";
+  const parallelBusy = state.chatParallelPanes.some(
+    (pane) =>
+      pane.chatLoading || pane.chatSending || Boolean(pane.chatRunId) || pane.chatStream !== null,
+  );
+  const refreshDisabled =
+    !state.connected ||
+    (state.chatParallelMode
+      ? parallelBusy
+      : state.chatLoading ||
+        state.chatSending ||
+        Boolean(state.chatRunId) ||
+        state.chatStream !== null);
+  const refreshIcon = html`
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path>
+      <path d="M21 3v5h-5"></path>
+    </svg>
+  `;
+  return html`
+    <div class="chat-controls oui-chat-toolbar">
+      <button
+        class="btn btn--sm btn--icon"
+        ?disabled=${refreshDisabled}
+        @click=${() => {
+          if (state.chatParallelMode) {
+            void state.refreshParallelChatPanes();
+            return;
+          }
+          void handleChatManualRefresh(state as unknown as ChatRefreshHost);
+        }}
+        title=${t("chat.refreshTitle")}
+        aria-label=${t("chat.refreshTitle")}
+        data-tooltip=${t("chat.refreshTitle")}
+      >
+        ${refreshIcon}
+      </button>
+      <button
+        class="btn btn--sm btn--icon ${state.chatParallelMode ? "active" : ""}"
+        @click=${() => state.setChatParallelMode(!state.chatParallelMode)}
+        aria-pressed=${state.chatParallelMode}
+        title=${parallelLabel}
+        aria-label=${parallelLabel}
+        data-tooltip=${parallelLabel}
+      >
+        ${icons.layoutGrid}
+      </button>
+    </div>
+  `;
 }
 
 export function renderChatControls(state: AppViewState) {
@@ -504,71 +764,75 @@ export function renderChatMobileToggle(state: AppViewState) {
         }}
       >
         <div class="chat-controls">
-          ${renderChatSessionSelectBase(state, switchChatSession)}
-          <div class="chat-controls__thinking">
-            <button
-              class="btn btn--sm btn--icon ${showThinking ? "active" : ""}"
-              ?disabled=${disableThinkingToggle}
-              @click=${() => {
-                if (!disableThinkingToggle) {
-                  state.applySettings({
-                    ...state.settings,
-                    chatShowThinking: !state.settings.chatShowThinking,
-                  });
-                }
-              }}
-              aria-pressed=${showThinking}
-              title=${t("chat.thinkingToggle")}
-            >
-              ${icons.brain}
-            </button>
-            <button
-              class="btn btn--sm btn--icon ${showToolCalls ? "active" : ""}"
-              ?disabled=${disableThinkingToggle}
-              @click=${() => {
-                if (!disableThinkingToggle) {
-                  state.applySettings({
-                    ...state.settings,
-                    chatShowToolCalls: !state.settings.chatShowToolCalls,
-                  });
-                }
-              }}
-              aria-pressed=${showToolCalls}
-              title=${t("chat.toolCallsToggle")}
-            >
-              ${toolCallsIcon}
-            </button>
-            <button
-              class="btn btn--sm btn--icon ${focusActive ? "active" : ""}"
-              ?disabled=${disableFocusToggle}
-              @click=${() => {
-                if (!disableFocusToggle) {
-                  state.applySettings({
-                    ...state.settings,
-                    chatFocusMode: !state.settings.chatFocusMode,
-                  });
-                }
-              }}
-              aria-pressed=${focusActive}
-              title=${t("chat.focusToggle")}
-            >
-              ${focusIcon}
-            </button>
-            <button
-              class="btn btn--sm btn--icon ${hideCron ? "active" : ""}"
-              @click=${() => {
-                state.sessionsHideCron = !hideCron;
-              }}
-              aria-pressed=${hideCron}
-              title=${hideCron
-                ? hiddenCronCount > 0
-                  ? t("chat.showCronSessionsHidden", { count: String(hiddenCronCount) })
-                  : t("chat.showCronSessions")
-                : t("chat.hideCronSessions")}
-            >
-              ${renderCronFilterIcon(hiddenCronCount)}
-            </button>
-          </div>
+          ${state.tab === "ouiChat"
+            ? renderOuiChatSessionSelectCompact(state)
+            : html`
+                ${renderChatSessionSelectBase(state, switchChatSession)}
+                <div class="chat-controls__thinking">
+                  <button
+                    class="btn btn--sm btn--icon ${showThinking ? "active" : ""}"
+                    ?disabled=${disableThinkingToggle}
+                    @click=${() => {
+                      if (!disableThinkingToggle) {
+                        state.applySettings({
+                          ...state.settings,
+                          chatShowThinking: !state.settings.chatShowThinking,
+                        });
+                      }
+                    }}
+                    aria-pressed=${showThinking}
+                    title=${t("chat.thinkingToggle")}
+                  >
+                    ${icons.brain}
+                  </button>
+                  <button
+                    class="btn btn--sm btn--icon ${showToolCalls ? "active" : ""}"
+                    ?disabled=${disableThinkingToggle}
+                    @click=${() => {
+                      if (!disableThinkingToggle) {
+                        state.applySettings({
+                          ...state.settings,
+                          chatShowToolCalls: !state.settings.chatShowToolCalls,
+                        });
+                      }
+                    }}
+                    aria-pressed=${showToolCalls}
+                    title=${t("chat.toolCallsToggle")}
+                  >
+                    ${toolCallsIcon}
+                  </button>
+                  <button
+                    class="btn btn--sm btn--icon ${focusActive ? "active" : ""}"
+                    ?disabled=${disableFocusToggle}
+                    @click=${() => {
+                      if (!disableFocusToggle) {
+                        state.applySettings({
+                          ...state.settings,
+                          chatFocusMode: !state.settings.chatFocusMode,
+                        });
+                      }
+                    }}
+                    aria-pressed=${focusActive}
+                    title=${t("chat.focusToggle")}
+                  >
+                    ${focusIcon}
+                  </button>
+                  <button
+                    class="btn btn--sm btn--icon ${hideCron ? "active" : ""}"
+                    @click=${() => {
+                      state.sessionsHideCron = !hideCron;
+                    }}
+                    aria-pressed=${hideCron}
+                    title=${hideCron
+                      ? hiddenCronCount > 0
+                        ? t("chat.showCronSessionsHidden", { count: String(hiddenCronCount) })
+                        : t("chat.showCronSessions")
+                      : t("chat.hideCronSessions")}
+                  >
+                    ${renderCronFilterIcon(hiddenCronCount)}
+                  </button>
+                </div>
+              `}
         </div>
       </div>
     </div>

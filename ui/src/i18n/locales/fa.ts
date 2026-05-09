@@ -370,6 +370,7 @@ export const fa: TranslationMap = {
     builtIn: "داخلی",
   },
   nav: {
+    oui: "OUI",
     chat: "چت",
     control: "کنترل",
     agent: "عامل",
@@ -379,6 +380,7 @@ export const fa: TranslationMap = {
     resize: "تغییر اندازه نوار کناری",
   },
   tabs: {
+    ouiChat: "OUI Chat",
     agents: "عامل‌ها",
     overview: "نمای کلی",
     channels: "کانال‌ها",
@@ -400,6 +402,7 @@ export const fa: TranslationMap = {
     dreams: "رؤیاپردازی",
   },
   subtitles: {
+    ouiChat: "Agent-first parallel chat.",
     agents: "فضاهای کاری، ابزارها، هویت‌ها.",
     overview: "وضعیت، نقاط ورود، سلامت.",
     channels: "کانال‌ها و تنظیمات.",

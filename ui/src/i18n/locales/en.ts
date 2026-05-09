@@ -367,6 +367,7 @@ export const en: TranslationMap = {
     builtIn: "Built-in",
   },
   nav: {
+    oui: "OUI",
     chat: "Chat",
     control: "Control",
     agent: "Agent",
@@ -376,6 +377,7 @@ export const en: TranslationMap = {
     resize: "Resize sidebar",
   },
   tabs: {
+    ouiChat: "OUI Chat",
     agents: "Agents",
     overview: "Overview",
     channels: "Channels",
@@ -397,6 +399,7 @@ export const en: TranslationMap = {
     dreams: "Dreaming",
   },
   subtitles: {
+    ouiChat: "Agent-first parallel chat.",
     agents: "Workspaces, tools, identities.",
     overview: "Status, entry points, health.",
     channels: "Channels and settings.",

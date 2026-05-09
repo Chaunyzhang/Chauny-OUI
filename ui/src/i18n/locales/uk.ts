@@ -370,6 +370,7 @@ export const uk: TranslationMap = {
     builtIn: "Вбудований",
   },
   nav: {
+    oui: "OUI",
     chat: "Чат",
     control: "Керування",
     agent: "Агент",
@@ -379,6 +380,7 @@ export const uk: TranslationMap = {
     resize: "Змінити розмір бічної панелі",
   },
   tabs: {
+    ouiChat: "OUI Chat",
     agents: "Агенти",
     overview: "Огляд",
     channels: "Канали",
@@ -400,6 +402,7 @@ export const uk: TranslationMap = {
     dreams: "Сни",
   },
   subtitles: {
+    ouiChat: "Agent-first parallel chat.",
     agents: "Робочі простори, інструменти, ідентичності.",
     overview: "Стан, точки входу, справність.",
     channels: "Канали та налаштування.",

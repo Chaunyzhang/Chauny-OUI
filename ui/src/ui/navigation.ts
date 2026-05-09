@@ -3,6 +3,7 @@ import type { IconName } from "./icons.js";
 import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
 
 export const TAB_GROUPS = [
+  { label: "oui", tabs: ["ouiChat"] },
   { label: "chat", tabs: ["chat"] },
   {
     label: "control",
@@ -25,6 +26,7 @@ export const TAB_GROUPS = [
 ] as const;
 
 export type Tab =
+  | "ouiChat"
   | "agents"
   | "overview"
   | "channels"
@@ -46,6 +48,7 @@ export type Tab =
   | "dreams";
 
 const TAB_PATHS: Record<Tab, string> = {
+  ouiChat: "/oui-chat",
   agents: "/agents",
   overview: "/overview",
   channels: "/channels",
@@ -128,9 +131,13 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     normalized = "/";
   }
   if (normalized === "/") {
-    return "chat";
+    return "ouiChat";
   }
   return PATH_TO_TAB.get(normalized) ?? null;
+}
+
+export function isChatTab(tab: Tab): boolean {
+  return tab === "chat" || tab === "ouiChat";
 }
 
 export function inferBasePathFromPathname(pathname: string): string {
@@ -157,6 +164,8 @@ export function inferBasePathFromPathname(pathname: string): string {
 
 export function iconForTab(tab: Tab): IconName {
   switch (tab) {
+    case "ouiChat":
+      return "messageSquare";
     case "agents":
       return "folder";
     case "chat":

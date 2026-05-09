@@ -371,6 +371,7 @@ export const nl: TranslationMap = {
     builtIn: "Ingebouwd",
   },
   nav: {
+    oui: "OUI",
     chat: "Chat",
     control: "Control",
     agent: "Agent",
@@ -380,6 +381,7 @@ export const nl: TranslationMap = {
     resize: "Zijbalkgrootte aanpassen",
   },
   tabs: {
+    ouiChat: "OUI Chat",
     agents: "Agents",
     overview: "Overzicht",
     channels: "Kanalen",
@@ -401,6 +403,7 @@ export const nl: TranslationMap = {
     dreams: "Dromen",
   },
   subtitles: {
+    ouiChat: "Agent-first parallel chat.",
     agents: "Werkruimten, tools, identiteiten.",
     overview: "Status, toegangspunten, gezondheid.",
     channels: "Kanalen en instellingen.",

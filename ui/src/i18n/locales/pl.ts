@@ -370,6 +370,7 @@ export const pl: TranslationMap = {
     builtIn: "Wbudowane",
   },
   nav: {
+    oui: "OUI",
     chat: "Czat",
     control: "Sterowanie",
     agent: "Agent",
@@ -379,6 +380,7 @@ export const pl: TranslationMap = {
     resize: "Zmień rozmiar paska bocznego",
   },
   tabs: {
+    ouiChat: "OUI Chat",
     agents: "Agenci",
     overview: "Przegląd",
     channels: "Kanały",
@@ -400,6 +402,7 @@ export const pl: TranslationMap = {
     dreams: "Sny",
   },
   subtitles: {
+    ouiChat: "Agent-first parallel chat.",
     agents: "Obszary robocze, narzędzia, tożsamości.",
     overview: "Status, punkty dostępu, stan.",
     channels: "Kanały i ustawienia.",
