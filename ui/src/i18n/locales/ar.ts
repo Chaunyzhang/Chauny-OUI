@@ -368,7 +368,6 @@ export const ar: TranslationMap = {
     builtIn: "مدمج",
   },
   nav: {
-    oui: "OUI",
     chat: "الدردشة",
     control: "التحكم",
     agent: "الوكيل",
@@ -378,7 +377,6 @@ export const ar: TranslationMap = {
     resize: "تغيير حجم الشريط الجانبي",
   },
   tabs: {
-    ouiChat: "OUI Chat",
     agents: "الوكلاء",
     overview: "نظرة عامة",
     channels: "القنوات",
@@ -400,7 +398,6 @@ export const ar: TranslationMap = {
     dreams: "الحلم",
   },
   subtitles: {
-    ouiChat: "Agent-first parallel chat.",
     agents: "مساحات العمل، والأدوات، والهويات.",
     overview: "الحالة، ونقاط الدخول، والصحة.",
     channels: "القنوات والإعدادات.",

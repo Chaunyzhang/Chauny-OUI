@@ -369,7 +369,6 @@ export const vi: TranslationMap = {
     builtIn: "Tích hợp sẵn",
   },
   nav: {
-    oui: "OUI",
     chat: "Trò chuyện",
     control: "Điều khiển",
     agent: "Agent",
@@ -379,7 +378,6 @@ export const vi: TranslationMap = {
     resize: "Thay đổi kích thước thanh bên",
   },
   tabs: {
-    ouiChat: "OUI Chat",
     agents: "Agent",
     overview: "Tổng quan",
     channels: "Kênh",
@@ -401,7 +399,6 @@ export const vi: TranslationMap = {
     dreams: "Đang mơ",
   },
   subtitles: {
-    ouiChat: "Agent-first parallel chat.",
     agents: "Không gian làm việc, công cụ, danh tính.",
     overview: "Trạng thái, điểm vào, tình trạng.",
     channels: "Kênh và cài đặt.",

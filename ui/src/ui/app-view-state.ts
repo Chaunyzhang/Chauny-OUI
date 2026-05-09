@@ -2,7 +2,6 @@ import type { ChatSendOptions } from "./app-chat.ts";
 import type { EventLogEntry } from "./app-events.ts";
 import type { CompactionStatus, FallbackStatus } from "./app-tool-stream.ts";
 import type { ChatInputHistoryKeyInput, ChatInputHistoryKeyResult } from "./chat/input-history.ts";
-import type { ParallelChatPane } from "./chat/parallel-chat.ts";
 import type { RealtimeTalkStatus } from "./chat/realtime-talk.ts";
 import type { ChatSideResult } from "./chat/side-result.ts";
 import type { CronModelSuggestionsState, CronState } from "./controllers/cron.ts";
@@ -127,9 +126,6 @@ export type AppViewState = {
   chatManualRefreshInFlight: boolean;
   chatHeaderControlsHidden: boolean;
   chatMobileControlsOpen: boolean;
-  chatParallelMode: boolean;
-  chatParallelPanes: ParallelChatPane[];
-  requestUpdate?: () => void;
   nodesLoading: boolean;
   nodes: Array<Record<string, unknown>>;
   chatNewMessagesBelow: boolean;
@@ -424,8 +420,6 @@ export type AppViewState = {
       open: boolean,
       options?: { trigger?: HTMLElement | null; restoreFocus?: boolean },
     ) => void;
-    setChatParallelMode: (open: boolean) => void;
-    refreshParallelChatPanes: () => Promise<void>;
     setTheme: (theme: ThemeName, context?: ThemeTransitionContext) => void;
     setThemeMode: (mode: ThemeMode, context?: ThemeTransitionContext) => void;
     setCustomThemeImportUrl: (next: string) => void;

@@ -1288,9 +1288,8 @@ export function renderChat(props: ChatProps) {
           <div class="agent-chat__toolbar-left">
             <button
               class="agent-chat__input-btn"
-              @click=${(event: Event) => {
-                const root = (event.currentTarget as HTMLElement).closest(".chat");
-                root?.querySelector<HTMLInputElement>(".agent-chat__file-input")?.click();
+              @click=${() => {
+                document.querySelector<HTMLInputElement>(".agent-chat__file-input")?.click();
               }}
               title="Attach file"
               aria-label="Attach file"

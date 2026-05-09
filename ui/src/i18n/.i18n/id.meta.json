@@ -1,15 +1,11 @@
 {
-  "fallbackKeys": [
-    "nav.oui",
-    "subtitles.ouiChat",
-    "tabs.ouiChat"
-  ],
-  "generatedAt": "2026-05-09T18:43:08.377Z",
+  "fallbackKeys": [],
+  "generatedAt": "2026-05-08T04:13:41.135Z",
   "locale": "id",
   "model": "gpt-5.5",
   "provider": "openai",
-  "sourceHash": "e2e61d145b0ca595013192e03376b2cdffb398ccf5b0e76731a4d055ef9b8240",
-  "totalKeys": 1077,
+  "sourceHash": "7d7cad2651bd1851b841b8db7129002ce05770e93d3469d0111b445c5d03ca97",
+  "totalKeys": 1074,
   "translatedKeys": 1074,
   "workflow": 1
 }

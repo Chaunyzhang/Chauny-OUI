@@ -367,7 +367,6 @@ export const zh_CN: TranslationMap = {
     builtIn: "内置",
   },
   nav: {
-    oui: "OUI",
     chat: "聊天",
     control: "控制",
     agent: "代理",
@@ -377,7 +376,6 @@ export const zh_CN: TranslationMap = {
     resize: "调整侧边栏大小",
   },
   tabs: {
-    ouiChat: "OUI Chat",
     agents: "代理",
     overview: "概览",
     channels: "频道",
@@ -399,7 +397,6 @@ export const zh_CN: TranslationMap = {
     dreams: "梦境",
   },
   subtitles: {
-    ouiChat: "Agent-first parallel chat.",
     agents: "工作区、工具、身份。",
     overview: "状态、入口点、健康。",
     channels: "频道和设置。",

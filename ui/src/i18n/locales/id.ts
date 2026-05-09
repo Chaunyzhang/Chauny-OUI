@@ -369,7 +369,6 @@ export const id: TranslationMap = {
     builtIn: "Bawaan",
   },
   nav: {
-    oui: "OUI",
     chat: "Chat",
     control: "Kontrol",
     agent: "Agen",
@@ -379,7 +378,6 @@ export const id: TranslationMap = {
     resize: "Ubah ukuran bilah samping",
   },
   tabs: {
-    ouiChat: "OUI Chat",
     agents: "Agen",
     overview: "Ikhtisar",
     channels: "Saluran",
@@ -401,7 +399,6 @@ export const id: TranslationMap = {
     dreams: "Mimpi",
   },
   subtitles: {
-    ouiChat: "Agent-first parallel chat.",
     agents: "Ruang kerja, alat, identitas.",
     overview: "Status, titik masuk, kesehatan.",
     channels: "Saluran dan pengaturan.",

@@ -367,7 +367,6 @@ export const th: TranslationMap = {
     builtIn: "มีมาในระบบ",
   },
   nav: {
-    oui: "OUI",
     chat: "แชต",
     control: "ควบคุม",
     agent: "เอเจนต์",
@@ -377,7 +376,6 @@ export const th: TranslationMap = {
     resize: "ปรับขนาดแถบด้านข้าง",
   },
   tabs: {
-    ouiChat: "OUI Chat",
     agents: "เอเจนต์",
     overview: "ภาพรวม",
     channels: "ช่องทาง",
@@ -399,7 +397,6 @@ export const th: TranslationMap = {
     dreams: "การฝัน",
   },
   subtitles: {
-    ouiChat: "Agent-first parallel chat.",
     agents: "เวิร์กสเปซ เครื่องมือ และข้อมูลประจำตัว",
     overview: "สถานะ จุดเข้าใช้งาน และความพร้อมใช้งาน",
     channels: "ช่องทางและการตั้งค่า",

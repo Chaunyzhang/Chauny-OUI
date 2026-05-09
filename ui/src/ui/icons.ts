@@ -286,14 +286,6 @@ export const icons = {
       <path d="M15 3h6v6M10 14L21 3" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
   `,
-  layoutGrid: html`
-    <svg viewBox="0 0 24 24">
-      <rect x="3" y="3" width="7" height="7" rx="1" />
-      <rect x="14" y="3" width="7" height="7" rx="1" />
-      <rect x="3" y="14" width="7" height="7" rx="1" />
-      <rect x="14" y="14" width="7" height="7" rx="1" />
-    </svg>
-  `,
   send: html`
     <svg viewBox="0 0 24 24">
       <path d="m22 2-7 20-4-9-9-4Z" />

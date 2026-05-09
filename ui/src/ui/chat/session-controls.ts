@@ -330,7 +330,7 @@ export function renderChatThinkingSelect(state: AppViewState) {
   `;
 }
 
-export async function switchChatModel(state: AppViewState, nextModel: string): Promise<boolean> {
+async function switchChatModel(state: AppViewState, nextModel: string): Promise<boolean> {
   if (!state.client || !state.connected) {
     return false;
   }
@@ -397,7 +397,7 @@ function patchSessionThinkingLevel(
   };
 }
 
-export async function switchChatThinkingLevel(state: AppViewState, nextThinkingLevel: string) {
+async function switchChatThinkingLevel(state: AppViewState, nextThinkingLevel: string) {
   if (!state.client || !state.connected) {
     return;
   }
@@ -563,12 +563,12 @@ export type SessionOptionGroup = {
   options: SessionOptionEntry[];
 };
 
-export type ChatAgentFilterOption = {
+type ChatAgentFilterOption = {
   id: string;
   label: string;
 };
 
-export function resolveChatAgentFilterId(state: AppViewState, sessionKey: string): string {
+function resolveChatAgentFilterId(state: AppViewState, sessionKey: string): string {
   const parsed = parseAgentSessionKey(sessionKey);
   return normalizeAgentId(parsed?.agentId ?? state.agentsList?.defaultId ?? "main");
 }
@@ -585,7 +585,7 @@ function isAgentMainSessionKey(key: string): boolean {
   return parseAgentSessionKey(key)?.rest === "main";
 }
 
-export function resolvePreferredSessionForAgent(state: AppViewState, agentId: string): string {
+function resolvePreferredSessionForAgent(state: AppViewState, agentId: string): string {
   const normalizedAgentId = normalizeAgentId(agentId);
   const defaultAgentId = normalizeAgentId(state.agentsList?.defaultId ?? "main");
   const currentParsed = parseAgentSessionKey(state.sessionKey);
@@ -605,7 +605,7 @@ export function resolvePreferredSessionForAgent(state: AppViewState, agentId: st
   return row?.key ?? buildAgentMainSessionKey({ agentId: normalizedAgentId });
 }
 
-export function resolveChatAgentFilterOptions(state: AppViewState): ChatAgentFilterOption[] {
+function resolveChatAgentFilterOptions(state: AppViewState): ChatAgentFilterOption[] {
   const seen = new Set<string>();
   const options: ChatAgentFilterOption[] = [];
   const add = (agentId: string) => {

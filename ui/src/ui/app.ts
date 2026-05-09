@@ -67,14 +67,6 @@ import {
 import type { AppViewState } from "./app-view-state.ts";
 import { normalizeAssistantIdentity } from "./assistant-identity.ts";
 import { exportChatMarkdown } from "./chat/export.ts";
-import {
-  ensureParallelChatPanes as ensureParallelChatPanesInternal,
-  handleParallelChatEvent as handleParallelChatEventInternal,
-  handleParallelSessionMessageEvent as handleParallelSessionMessageEventInternal,
-  refreshParallelChatPanes as refreshParallelChatPanesInternal,
-  type ParallelChatHost,
-  type ParallelChatPane,
-} from "./chat/parallel-chat.ts";
 import { RealtimeTalkSession, type RealtimeTalkStatus } from "./chat/realtime-talk.ts";
 import type { ChatSideResult } from "./chat/side-result.ts";
 import {
@@ -97,7 +89,7 @@ import type {
 } from "./controllers/skills.ts";
 import { importCustomThemeFromUrl } from "./custom-theme.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
-import { isChatTab, type Tab } from "./navigation.ts";
+import type { Tab } from "./navigation.ts";
 import { resolveAgentIdFromSessionKey } from "./session-key.ts";
 import type { SidebarContent } from "./sidebar-content.ts";
 import { loadLocalUserIdentity, loadSettings, type UiSettings } from "./storage.ts";
@@ -167,7 +159,7 @@ export class OpenClawApp extends LitElement {
   @state() password = "";
   @state() loginShowGatewayToken = false;
   @state() loginShowGatewayPassword = false;
-  @state() tab: Tab = "ouiChat";
+  @state() tab: Tab = "chat";
   @state() onboarding = resolveOnboardingMode();
   @state() connected = false;
   @state() theme: ThemeName = this.settings.theme ?? "claw";
@@ -244,8 +236,6 @@ export class OpenClawApp extends LitElement {
   @state() chatManualRefreshInFlight = false;
   @state() chatHeaderControlsHidden = false;
   @state() chatMobileControlsOpen = false;
-  @state() chatParallelMode = this.settings.chatParallelMode ?? false;
-  @state() chatParallelPanes: ParallelChatPane[] = [];
   private chatMobileControlsTrigger: HTMLElement | null = null;
   @state() navDrawerOpen = false;
 
@@ -689,18 +679,8 @@ export class OpenClawApp extends LitElement {
   protected updated(changed: Map<PropertyKey, unknown>) {
     handleUpdated(this as unknown as Parameters<typeof handleUpdated>[0], changed);
     // Some render callbacks assign tab directly while preparing nested panel state.
-    if (changed.has("tab") && !isChatTab(this.tab) && this.chatMobileControlsOpen) {
+    if (changed.has("tab") && this.tab !== "chat" && this.chatMobileControlsOpen) {
       this.setChatMobileControlsOpen(false);
-    }
-    if (
-      this.chatParallelMode &&
-      this.tab === "ouiChat" &&
-      (changed.has("agentsList") || changed.has("connected") || changed.has("client"))
-    ) {
-      this.ensureParallelChatPanes();
-      if (this.connected) {
-        void this.refreshParallelChatPanes();
-      }
     }
     if (!changed.has("sessionKey") || this.agentsPanel !== "tools") {
       return;
@@ -776,7 +756,7 @@ export class OpenClawApp extends LitElement {
 
   setTab(next: Tab) {
     setTabInternal(this as unknown as Parameters<typeof setTabInternal>[0], next);
-    if (!isChatTab(next)) {
+    if (next !== "chat") {
       this.setChatMobileControlsOpen(false);
     }
     this.navDrawerOpen = false;
@@ -803,41 +783,6 @@ export class OpenClawApp extends LitElement {
         focusTarget.focus();
       }
     });
-  }
-
-  setChatParallelMode(open: boolean) {
-    if (this.chatParallelMode === open) {
-      return;
-    }
-    this.chatParallelMode = open;
-    this.applySettings({ ...this.settings, chatParallelMode: open });
-    if (!open) {
-      return;
-    }
-    this.ensureParallelChatPanes();
-    void this.refreshParallelChatPanes();
-  }
-
-  ensureParallelChatPanes() {
-    ensureParallelChatPanesInternal(this as unknown as ParallelChatHost);
-  }
-
-  async refreshParallelChatPanes() {
-    await refreshParallelChatPanesInternal(this as unknown as ParallelChatHost);
-  }
-
-  handleParallelChatEvent(payload: import("./controllers/chat.ts").ChatEventPayload | undefined) {
-    if (this.tab !== "ouiChat" && this.chatParallelPanes.length === 0) {
-      return;
-    }
-    handleParallelChatEventInternal(this as unknown as ParallelChatHost, payload);
-  }
-
-  handleParallelSessionMessageEvent(payload: { sessionKey?: string } | undefined) {
-    if (this.tab !== "ouiChat" && this.chatParallelPanes.length === 0) {
-      return;
-    }
-    handleParallelSessionMessageEventInternal(this as unknown as ParallelChatHost, payload);
   }
 
   setTheme(next: ThemeName, context?: Parameters<typeof setThemeInternal>[2]) {

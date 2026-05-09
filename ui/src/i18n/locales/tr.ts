@@ -371,7 +371,6 @@ export const tr: TranslationMap = {
     builtIn: "Yerleşik",
   },
   nav: {
-    oui: "OUI",
     chat: "Sohbet",
     control: "Kontrol",
     agent: "Aracı",
@@ -381,7 +380,6 @@ export const tr: TranslationMap = {
     resize: "Kenar çubuğunu yeniden boyutlandır",
   },
   tabs: {
-    ouiChat: "OUI Chat",
     agents: "Aracılar",
     overview: "Genel Bakış",
     channels: "Kanallar",
@@ -403,7 +401,6 @@ export const tr: TranslationMap = {
     dreams: "Düşler",
   },
   subtitles: {
-    ouiChat: "Agent-first parallel chat.",
     agents: "Çalışma alanları, araçlar, kimlikler.",
     overview: "Durum, giriş noktaları, sağlık.",
     channels: "Kanallar ve ayarlar.",
