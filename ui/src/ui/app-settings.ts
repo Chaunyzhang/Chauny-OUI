@@ -44,6 +44,7 @@ import {
 } from "./controllers/model-auth-status.ts";
 import { loadModels } from "./controllers/models.ts";
 import { loadNodes, type NodesState } from "./controllers/nodes.ts";
+import { loadOuiCompany, type OuiCompanyUiState } from "./controllers/oui-company.ts";
 import { loadPresence, type PresenceState } from "./controllers/presence.ts";
 import { loadSessions, type SessionsState } from "./controllers/sessions.ts";
 import { loadSkills, type SkillsState } from "./controllers/skills.ts";
@@ -137,6 +138,7 @@ type SettingsAppHost = SettingsHost &
   SessionsState &
   SkillsState &
   ModelAuthStatusState &
+  OuiCompanyUiState &
   UsageState & {
     overviewLogCursor: number | null;
     overviewLogLines: string[];
@@ -388,6 +390,10 @@ export async function refreshActiveTab(host: SettingsHost) {
         await loadConfig(app);
         await Promise.allSettled([refreshModelManagementData(app), loadAgents(app)]);
         await loadAgentIdentities(app, app.agentsList?.agents.map((agent) => agent.id) ?? []);
+        break;
+      case "ouiCompany":
+        await loadAgents(app);
+        await loadOuiCompany(app);
         break;
       case "setupWizard":
         await loadConfigSchema(app);

@@ -28,6 +28,7 @@ export const TAB_GROUPS = [
 export type Tab =
   | "agents"
   | "ouiOverview"
+  | "ouiCompany"
   | "overview"
   | "channels"
   | "instances"
@@ -54,6 +55,7 @@ export type Tab =
 const TAB_PATHS: Record<Tab, string> = {
   agents: "/agents",
   ouiOverview: "/oui/overview",
+  ouiCompany: "/oui/company",
   overview: "/overview",
   channels: "/channels",
   instances: "/instances",
@@ -88,6 +90,8 @@ const PATH_ALIASES: Record<string, Tab> = {
   "/models": "modelManager",
   "/agent-manager": "agentManager",
   "/agents-manager": "agentManager",
+  "/company": "ouiCompany",
+  "/oui-company": "ouiCompany",
 };
 
 const PATH_TO_TAB = new Map<string, Tab>([
@@ -180,6 +184,8 @@ export function iconForTab(tab: Tab): IconName {
       return "folder";
     case "ouiOverview":
       return "barChart";
+    case "ouiCompany":
+      return "folder";
     case "chat":
     case "ouiChat":
       return "messageSquare";
@@ -235,6 +241,7 @@ export function isChatTab(tab: Tab): boolean {
 export function isOuiTab(tab: Tab): boolean {
   return (
     tab === "ouiOverview" ||
+    tab === "ouiCompany" ||
     tab === "ouiChat" ||
     tab === "setupWizard" ||
     tab === "modelManager" ||
@@ -248,6 +255,9 @@ export function titleForTab(tab: Tab) {
   }
   if (tab === "ouiChat") {
     return t("tabs.chat");
+  }
+  if (tab === "ouiCompany") {
+    return localizeConfigCopy("Company");
   }
   if (tab === "setupWizard") {
     return localizeConfigCopy("Setup Wizard");
@@ -267,6 +277,9 @@ export function subtitleForTab(tab: Tab) {
   }
   if (tab === "ouiChat") {
     return t("subtitles.chat");
+  }
+  if (tab === "ouiCompany") {
+    return localizeConfigCopy("Company, tasks, and run timeline");
   }
   if (tab === "setupWizard") {
     return localizeConfigCopy("Configure model plans and chat apps");

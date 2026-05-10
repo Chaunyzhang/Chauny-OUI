@@ -136,7 +136,7 @@
 
 .oui-chat-window-header {
   display: grid;
-  grid-template-columns: minmax(170px, 1fr) minmax(260px, auto) 36px;
+  grid-template-columns: minmax(170px, 1fr) minmax(260px, auto) 36px 36px;
   gap: 10px;
   align-items: center;
   flex: 0 0 auto;
@@ -193,6 +193,19 @@
   grid-template-columns: repeat(2, minmax(128px, 1fr));
   gap: 8px;
   min-width: 0;
+}
+
+.oui-chat-window-header__task {
+  align-self: center;
+  justify-self: end;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+}
+
+.oui-chat-window-header__task svg {
+  width: 16px;
+  height: 16px;
 }
 
 .oui-chat-window-select,
@@ -353,7 +366,7 @@
 }
 
 .parallel-chat .oui-chat-window-header {
-  grid-template-columns: minmax(120px, 0.72fr) minmax(220px, 1fr) 36px;
+  grid-template-columns: minmax(120px, 0.72fr) minmax(220px, 1fr) 36px 36px;
   padding: 8px 10px;
 }
 
@@ -467,7 +480,7 @@
 
   .oui-chat-window-header,
   .parallel-chat .oui-chat-window-header {
-    grid-template-columns: minmax(0, 1fr) 36px;
+    grid-template-columns: minmax(0, 1fr) 36px 36px;
   }
 
   .oui-chat-window-header__controls {

@@ -207,7 +207,11 @@ export function createOuiHttpServer(options: OuiHttpServerOptions): OuiHttpServe
           res,
           company ? 200 : 404,
           company
-            ? { company, agents: await productStore.listAgents(companyId) }
+            ? {
+                company,
+                agents: await productStore.listAgents(companyId),
+                tasks: await productStore.listTasks(companyId),
+              }
             : { error: "not_found" },
         );
         return;
@@ -244,9 +248,18 @@ export function createOuiHttpServer(options: OuiHttpServerOptions): OuiHttpServe
       }
 
       const companyTasksMatch = /^\/api\/oui\/companies\/([^/]+)\/tasks$/.exec(url.pathname);
-      if (req.method === "POST" && companyTasksMatch) {
+      if (companyTasksMatch) {
         const productStore = requireProductStore(options.productStore, res);
         if (!productStore) {
+          return;
+        }
+        const companyId = decodeURIComponent(companyTasksMatch[1]);
+        if (req.method === "GET") {
+          sendJson(res, 200, { tasks: await productStore.listTasks(companyId) });
+          return;
+        }
+        if (req.method !== "POST") {
+          sendJson(res, 405, { error: "method_not_allowed" });
           return;
         }
         const body = asObject(await readRequestBody(req));
@@ -256,7 +269,7 @@ export function createOuiHttpServer(options: OuiHttpServerOptions): OuiHttpServe
         }
         const task = await productStore.createTask({
           id: typeof body.id === "string" ? body.id : undefined,
-          companyId: decodeURIComponent(companyTasksMatch[1]),
+          companyId,
           title: body.title,
           description: typeof body.description === "string" ? body.description : null,
           assignedAgentId: typeof body.assignedAgentId === "string" ? body.assignedAgentId : null,

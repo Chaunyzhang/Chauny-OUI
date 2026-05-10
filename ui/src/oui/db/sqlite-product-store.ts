@@ -301,6 +301,29 @@ export class OuiSqliteProductStore implements OuiProductStore {
     return this.getTaskSync(taskId);
   }
 
+  async listTasks(companyId: string): Promise<OuiTaskRecord[]> {
+    return this.getAll(
+      `
+        SELECT * FROM oui_tasks
+        WHERE company_id = ?
+        ORDER BY
+          CASE status
+            WHEN 'running' THEN 0
+            WHEN 'review' THEN 1
+            WHEN 'blocked' THEN 2
+            WHEN 'ready' THEN 3
+            WHEN 'draft' THEN 4
+            WHEN 'done' THEN 5
+            ELSE 6
+          END,
+          priority DESC,
+          updated_at DESC,
+          id ASC
+      `,
+      companyId,
+    ).map(readTask);
+  }
+
   async addTaskDependency(
     taskId: string,
     dependsOnTaskId: string,
@@ -381,7 +404,11 @@ export class OuiSqliteProductStore implements OuiProductStore {
       throw new Error(`Invalid OUI task review transition: ${task.reviewState} -> ${next}`);
     }
     const status: OuiTaskStatus =
-      next === "requested" || next === "changes_requested" ? "review" : task.status;
+      next === "approved"
+        ? "done"
+        : next === "requested" || next === "changes_requested"
+          ? "review"
+          : task.status;
     return this.updateTaskFields(taskId, { review_state: next, status }, now);
   }
 

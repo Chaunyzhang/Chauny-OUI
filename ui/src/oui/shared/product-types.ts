@@ -195,6 +195,7 @@ export type OuiProductStore = {
   setDefaultLeaderAgent(companyId: string, agentId: string, now?: Date): Promise<OuiCompanyRecord>;
   createTask(input: OuiCreateTaskInput): Promise<OuiTaskRecord>;
   getTask(taskId: string): Promise<OuiTaskRecord | null>;
+  listTasks(companyId: string): Promise<OuiTaskRecord[]>;
   addTaskDependency(
     taskId: string,
     dependsOnTaskId: string,

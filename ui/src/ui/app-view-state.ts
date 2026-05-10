@@ -1,3 +1,11 @@
+import type {
+  OuiAgentRecord,
+  OuiCompanyRecord,
+  OuiEmployeeAdapterPreview,
+  OuiTaskRecord,
+  OuiTaskReviewState,
+  OuiTaskTimeline,
+} from "../oui/shared/product-types.ts";
 import type { ChatSendOptions } from "./app-chat.ts";
 import type { EventLogEntry } from "./app-events.ts";
 import type { CompactionStatus, FallbackStatus } from "./app-tool-stream.ts";
@@ -9,6 +17,7 @@ import type { CronModelSuggestionsState, CronState } from "./controllers/cron.ts
 import type { DevicePairingList } from "./controllers/devices.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
+import type { OuiCompanyMessage } from "./controllers/oui-company.ts";
 import type {
   ClawHubSearchResult,
   ClawHubSkillDetail,
@@ -435,6 +444,20 @@ export type AppViewState = {
     overviewLogCursor: number;
     ouiOverviewTokenBusy: boolean;
     ouiOverviewTokenMessage: { kind: "success" | "error"; text: string } | null;
+    ouiCompanyLoading: boolean;
+    ouiCompanyBusy: boolean;
+    ouiCompanyApiAvailable: boolean;
+    ouiCompanyError: string | null;
+    ouiCompanyMessage: OuiCompanyMessage | null;
+    ouiCompanyRecord: OuiCompanyRecord | null;
+    ouiCompanyAgents: OuiAgentRecord[];
+    ouiCompanyTasks: OuiTaskRecord[];
+    ouiCompanyAdapters: OuiEmployeeAdapterPreview[];
+    ouiCompanyTimeline: OuiTaskTimeline | null;
+    ouiCompanySelectedTaskId: string | null;
+    ouiTaskDraftTitle: string;
+    ouiTaskDraftDescription: string;
+    ouiTaskDraftAgentId: string;
     client: GatewayBrowserClient | null;
     refreshSessionsAfterChat: Set<string>;
     connect: () => void;
@@ -455,6 +478,13 @@ export type AppViewState = {
     applySettings: (next: UiSettings) => void;
     applyLocalUserIdentity?: (next: { name?: string | null; avatar?: string | null }) => void;
     loadOverview: (opts?: { refresh?: boolean }) => Promise<void>;
+    loadOuiCompany: () => Promise<void>;
+    createOuiTask: () => Promise<void>;
+    selectOuiTask: (taskId: string) => Promise<void>;
+    assignOuiTask: (taskId: string, agentId: string) => Promise<void>;
+    queueOuiTaskRun: (taskId: string) => Promise<void>;
+    transitionOuiTaskReview: (taskId: string, reviewState: OuiTaskReviewState) => Promise<void>;
+    createOuiTaskFromParallelPane: (paneId: string) => Promise<void>;
     loadAssistantIdentity: () => Promise<void>;
     loadCron: () => Promise<void>;
     handleWhatsAppStart: (force: boolean) => Promise<void>;

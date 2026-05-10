@@ -147,6 +147,13 @@ describe("OUI HTTP server", () => {
     });
     expect(assignResponse.status).toBe(200);
 
+    const companyReadResponse = await fetch(`http://127.0.0.1:${port}/api/oui/companies/company_1`);
+    const companyReadBody = (await companyReadResponse.json()) as {
+      tasks?: Array<{ id?: string }>;
+    };
+    expect(companyReadResponse.status).toBe(200);
+    expect(companyReadBody.tasks?.map((task) => task.id)).toEqual(["task_1"]);
+
     const runResponse = await fetch(`http://127.0.0.1:${port}/api/oui/tasks/task_1/runs`, {
       method: "POST",
       headers: { "content-type": "application/json" },

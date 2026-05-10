@@ -90,6 +90,16 @@ import type {
 } from "./controllers/dreaming.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
+import {
+  assignOuiTask as assignOuiTaskInternal,
+  createOuiTask as createOuiTaskInternal,
+  createOuiTaskFromParallelPane as createOuiTaskFromParallelPaneInternal,
+  loadOuiCompany as loadOuiCompanyInternal,
+  queueOuiTaskRun as queueOuiTaskRunInternal,
+  selectOuiTask as selectOuiTaskInternal,
+  transitionOuiTaskReview as transitionOuiTaskReviewInternal,
+  type OuiCompanyMessage,
+} from "./controllers/oui-company.ts";
 import type {
   ClawHubSearchResult,
   ClawHubSkillDetail,
@@ -539,6 +549,23 @@ export class OpenClawApp extends LitElement {
   @state() overviewLogCursor = 0;
   @state() ouiOverviewTokenBusy = false;
   @state() ouiOverviewTokenMessage: { kind: "success" | "error"; text: string } | null = null;
+  @state() ouiCompanyLoading = false;
+  @state() ouiCompanyBusy = false;
+  @state() ouiCompanyApiAvailable = false;
+  @state() ouiCompanyError: string | null = null;
+  @state() ouiCompanyMessage: OuiCompanyMessage | null = null;
+  @state() ouiCompanyRecord: import("../oui/shared/product-types.ts").OuiCompanyRecord | null =
+    null;
+  @state() ouiCompanyAgents: import("../oui/shared/product-types.ts").OuiAgentRecord[] = [];
+  @state() ouiCompanyTasks: import("../oui/shared/product-types.ts").OuiTaskRecord[] = [];
+  @state()
+  ouiCompanyAdapters: import("../oui/shared/product-types.ts").OuiEmployeeAdapterPreview[] = [];
+  @state() ouiCompanyTimeline: import("../oui/shared/product-types.ts").OuiTaskTimeline | null =
+    null;
+  @state() ouiCompanySelectedTaskId: string | null = null;
+  @state() ouiTaskDraftTitle = "";
+  @state() ouiTaskDraftDescription = "";
+  @state() ouiTaskDraftAgentId = "";
 
   @state() skillsLoading = false;
   @state() skillsReport: SkillStatusReport | null = null;
@@ -850,6 +877,37 @@ export class OpenClawApp extends LitElement {
 
   handleParallelSessionMessageEvent(payload: { sessionKey?: string } | undefined) {
     handleParallelSessionMessageEventInternal(this as unknown as ParallelChatHost, payload);
+  }
+
+  async loadOuiCompany() {
+    await loadOuiCompanyInternal(this);
+  }
+
+  async createOuiTask() {
+    await createOuiTaskInternal(this);
+  }
+
+  async selectOuiTask(taskId: string) {
+    await selectOuiTaskInternal(this, taskId);
+  }
+
+  async assignOuiTask(taskId: string, agentId: string) {
+    await assignOuiTaskInternal(this, taskId, agentId);
+  }
+
+  async queueOuiTaskRun(taskId: string) {
+    await queueOuiTaskRunInternal(this, taskId);
+  }
+
+  async transitionOuiTaskReview(
+    taskId: string,
+    reviewState: import("../oui/shared/product-types.ts").OuiTaskReviewState,
+  ) {
+    await transitionOuiTaskReviewInternal(this, taskId, reviewState);
+  }
+
+  async createOuiTaskFromParallelPane(paneId: string) {
+    await createOuiTaskFromParallelPaneInternal(this, paneId);
   }
 
   setTheme(next: ThemeName, context?: Parameters<typeof setThemeInternal>[2]) {

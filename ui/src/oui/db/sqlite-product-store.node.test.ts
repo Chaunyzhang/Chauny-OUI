@@ -112,6 +112,11 @@ describe("OuiSqliteProductStore tasks", () => {
     const changes = await store.transitionTaskReview(task.id, "changes_requested");
     expect(changes.reviewState).toBe("changes_requested");
     await expect(store.transitionTaskReview(task.id, "approved")).rejects.toThrow(/Invalid/);
+    const requestedAgain = await store.transitionTaskReview(task.id, "requested");
+    const approved = await store.transitionTaskReview(requestedAgain.id, "approved");
+    expect(approved).toMatchObject({ status: "done", reviewState: "approved" });
+
+    expect((await store.listTasks("company_1")).map((entry) => entry.id)).toContain("task_main");
   });
 
   it("rejects dependency cycles", async () => {

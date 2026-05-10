@@ -291,6 +291,16 @@ function renderPaneWindowHeader(state: AppViewState, pane: ParallelChatPane) {
       <div class="oui-chat-window-header__controls">
         ${renderPaneThinkingSelect(state, pane)} ${renderOuiOmsWindowSelect(state)}
       </div>
+      <button
+        type="button"
+        class="btn btn--sm btn--icon oui-chat-window-header__task"
+        title=${paneCopy("Create task", "创建任务")}
+        aria-label=${paneCopy("Create task", "创建任务")}
+        ?disabled=${state.ouiCompanyBusy}
+        @click=${() => void state.createOuiTaskFromParallelPane(pane.id)}
+      >
+        ${icons.fileText}
+      </button>
       ${renderPaneSettings(state, pane)}
     </div>
   `;

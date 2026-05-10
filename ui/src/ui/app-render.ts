@@ -186,6 +186,7 @@ import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderModelManager } from "./views/model-manager.ts";
 import { renderOuiChat } from "./views/oui-chat.ts";
+import { renderOuiCompany } from "./views/oui-company.ts";
 import { renderOuiOverview } from "./views/oui-overview.ts";
 import { renderOverview } from "./views/overview.ts";
 import { renderParallelChat } from "./views/parallel-chat.ts";
@@ -704,6 +705,7 @@ function renderOuiNavigation(state: AppViewState, collapsed: boolean) {
       <div class="nav-section__items">
         ${renderTab(state, "ouiOverview", { collapsed })}
         ${renderTab(state, "ouiChat", { collapsed })}
+        ${renderTab(state, "ouiCompany", { collapsed })}
         ${renderTab(state, "modelManager", { collapsed })}
         ${renderTab(state, "agentManager", { collapsed })}
       </div>
@@ -1639,6 +1641,40 @@ export function renderApp(state: AppViewState) {
         void removeAgentConfig(agentId);
       },
     });
+  const renderOuiCompanySection = () =>
+    renderOuiCompany({
+      loading: state.ouiCompanyLoading,
+      busy: state.ouiCompanyBusy,
+      apiAvailable: state.ouiCompanyApiAvailable,
+      error: state.ouiCompanyError,
+      message: state.ouiCompanyMessage,
+      company: state.ouiCompanyRecord,
+      agents: state.ouiCompanyAgents,
+      tasks: state.ouiCompanyTasks,
+      adapters: state.ouiCompanyAdapters,
+      timeline: state.ouiCompanyTimeline,
+      selectedTaskId: state.ouiCompanySelectedTaskId,
+      draftTitle: state.ouiTaskDraftTitle,
+      draftDescription: state.ouiTaskDraftDescription,
+      draftAgentId: state.ouiTaskDraftAgentId,
+      onRefresh: () => state.loadOuiCompany(),
+      onDraftTitleChange: (next) => {
+        state.ouiTaskDraftTitle = next;
+      },
+      onDraftDescriptionChange: (next) => {
+        state.ouiTaskDraftDescription = next;
+      },
+      onDraftAgentChange: (next) => {
+        state.ouiTaskDraftAgentId = next;
+      },
+      onCreateTask: () => state.createOuiTask(),
+      onSelectTask: (taskId) => state.selectOuiTask(taskId),
+      onAssignTask: (taskId, agentId) => state.assignOuiTask(taskId, agentId),
+      onQueueRun: (taskId) => state.queueOuiTaskRun(taskId),
+      onReviewTransition: (taskId, reviewState) =>
+        state.transitionOuiTaskReview(taskId, reviewState),
+      onOpenParallelChat: () => state.setTab("ouiChat"),
+    });
   const applyQuickModelSetup = async () => {
     state.setupModelSaving = true;
     state.setupModelMessage = null;
@@ -2014,6 +2050,8 @@ export function renderApp(state: AppViewState) {
         return renderModelManagerSection();
       case "agentManager":
         return renderAgentManagerSection();
+      case "ouiCompany":
+        return renderOuiCompanySection();
       default:
         return nothing;
     }

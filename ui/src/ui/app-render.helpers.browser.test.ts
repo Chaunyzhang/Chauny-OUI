@@ -1,5 +1,5 @@
 import { render } from "lit";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n, t } from "../i18n/index.ts";
 import {
   renderChatControls,
@@ -13,6 +13,10 @@ import type { SessionsListResult } from "./types.ts";
 import { renderParallelChat } from "./views/parallel-chat.ts";
 
 type SessionRow = SessionsListResult["sessions"][number];
+
+beforeEach(async () => {
+  await i18n.setLocale("en");
+});
 
 function row(overrides: Partial<SessionRow> & { key: string }): SessionRow {
   return { kind: "direct", updatedAt: 0, ...overrides };

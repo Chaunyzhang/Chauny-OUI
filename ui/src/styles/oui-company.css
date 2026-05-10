@@ -1,0 +1,548 @@
+.oui-company {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+  min-width: 0;
+}
+
+.oui-company__hero,
+.oui-company__band,
+.oui-company__creator,
+.oui-company__timeline {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.oui-company__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+  gap: 18px;
+  align-items: stretch;
+  padding: 24px;
+}
+
+.oui-company__hero-main {
+  display: grid;
+  align-content: space-between;
+  gap: 18px;
+  min-width: 0;
+}
+
+.oui-company__hero h2,
+.oui-company__section-head h3 {
+  margin: 0;
+  color: var(--text-strong);
+  letter-spacing: 0;
+}
+
+.oui-company__hero h2 {
+  font-size: 30px;
+  line-height: 1.05;
+}
+
+.oui-company__section-head h3 {
+  font-size: 18px;
+  line-height: 1.2;
+}
+
+.oui-company__eyebrow {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.oui-company__hero-actions,
+.oui-company__task-actions,
+.oui-company__agent-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.oui-company__hero-actions .btn svg,
+.oui-company__task-actions .btn svg,
+.oui-company__create-button svg,
+.oui-company__timeline .btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.oui-company__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.oui-company__metric {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 16px;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 82%, transparent);
+}
+
+.oui-company__metric:nth-child(2n) {
+  border-right: 0;
+}
+
+.oui-company__metric:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.oui-company__metric span,
+.oui-company__field span,
+.oui-company__task-assignee span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.oui-company__metric strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 17px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oui-company__section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+}
+
+.oui-company__band,
+.oui-company__creator,
+.oui-company__timeline {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+}
+
+.oui-company__agent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+
+.oui-company__agent-card,
+.oui-company__adapter-card,
+.oui-company__task-card,
+.oui-company__run-card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+}
+
+.oui-company__agent-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+}
+
+.oui-company__agent-card--leader {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+}
+
+.oui-company__agent-avatar {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--text-strong);
+  font-weight: 850;
+}
+
+.oui-company__agent-body {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.oui-company__agent-name,
+.oui-company__adapter-name,
+.oui-company__task-title,
+.oui-company__run-id {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oui-company__agent-meta,
+.oui-company__adapter-meta,
+.oui-company__task-time,
+.oui-company__run-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.oui-company__adapter-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.oui-company__adapter-reason,
+.oui-company__task-description {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.oui-company__pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.oui-company__pill--active,
+.oui-company__pill--ready,
+.oui-company__pill--done,
+.oui-company__pill--leader,
+.oui-company__pill--approved,
+.oui-company__pill--review-approved {
+  border-color: color-mix(in srgb, var(--ok) 36%, var(--border));
+  background: color-mix(in srgb, var(--ok) 9%, var(--card));
+  color: var(--ok);
+}
+
+.oui-company__pill--disabled,
+.oui-company__pill--blocked,
+.oui-company__pill--failed,
+.oui-company__pill--missing,
+.oui-company__pill--changes_requested,
+.oui-company__pill--review-changes_requested {
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--border));
+  background: color-mix(in srgb, var(--danger) 8%, var(--card));
+  color: var(--danger);
+}
+
+.oui-company__pill--running,
+.oui-company__pill--review,
+.oui-company__pill--requested,
+.oui-company__pill--review-requested {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, var(--card));
+  color: var(--accent);
+}
+
+.oui-company__creator-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(180px, 0.8fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.oui-company__field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.oui-company__field--description {
+  grid-column: 1 / -2;
+}
+
+.oui-company__field input,
+.oui-company__field textarea,
+.oui-company__field select,
+.oui-company__task-assignee select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font: inherit;
+}
+
+.oui-company__field input,
+.oui-company__field select,
+.oui-company__task-assignee select {
+  min-height: 40px;
+  padding: 0 10px;
+}
+
+.oui-company__field textarea {
+  min-height: 82px;
+  resize: vertical;
+  padding: 10px;
+}
+
+.oui-company__create-button {
+  min-height: 40px;
+}
+
+.oui-company__work {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.42fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.oui-company__work-main {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+
+.oui-company__board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.oui-company__column {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.oui-company__column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  color: var(--text-strong);
+  font-weight: 800;
+}
+
+.oui-company__column-head strong {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.oui-company__column-list {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.oui-company__task-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.oui-company__task-card--selected {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.oui-company__task-open {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.oui-company__task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.oui-company__task-assignee {
+  display: grid;
+  gap: 6px;
+}
+
+.oui-company__task-actions .btn {
+  min-height: 32px;
+}
+
+.oui-company__timeline {
+  position: sticky;
+  top: 14px;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+}
+
+.oui-company__timeline-task,
+.oui-company__cost-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.oui-company__timeline-runs,
+.oui-company__logs {
+  display: grid;
+  gap: 10px;
+}
+
+.oui-company__run-card {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.oui-company__run-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.oui-company__json {
+  overflow: auto;
+  max-height: 180px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.oui-company__log {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 70%, transparent);
+}
+
+.oui-company__log span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.oui-company__log code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.oui-company__message,
+.oui-company__empty {
+  padding: 12px 14px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.oui-company__empty {
+  border: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 64%, transparent);
+}
+
+.oui-company__empty--compact {
+  padding: 10px;
+  font-size: 12px;
+}
+
+.oui-company__message--success {
+  border: 1px solid color-mix(in srgb, var(--ok) 34%, var(--border));
+  background: color-mix(in srgb, var(--ok) 9%, var(--card));
+  color: var(--ok);
+}
+
+.oui-company__message--error {
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, var(--border));
+  background: color-mix(in srgb, var(--danger) 9%, var(--card));
+  color: var(--danger);
+}
+
+@media (max-width: 1180px) {
+  .oui-company__hero,
+  .oui-company__work {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oui-company__timeline {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .oui-company__board {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oui-company__creator-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oui-company__field--description {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 560px) {
+  .oui-company__hero,
+  .oui-company__band,
+  .oui-company__creator,
+  .oui-company__timeline {
+    padding: 14px;
+  }
+
+  .oui-company__metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oui-company__metric,
+  .oui-company__metric:nth-child(2n),
+  .oui-company__metric:nth-last-child(-n + 2) {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .oui-company__metric:last-child {
+    border-bottom: 0;
+  }
+}
