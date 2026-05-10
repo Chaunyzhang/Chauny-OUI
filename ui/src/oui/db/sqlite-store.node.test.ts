@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { runOuiMigrations } from "./migrations.ts";
+import { OUI_DB_LATEST_SCHEMA_VERSION, runOuiMigrations } from "./migrations.ts";
 import { OuiSqliteRunStore } from "./sqlite-store.ts";
 
 let stores: OuiSqliteRunStore[] = [];
@@ -37,7 +37,7 @@ describe("OUI SQLite migrations", () => {
     const row = db.prepare("SELECT COUNT(*) AS count FROM oui_schema_migrations").get() as {
       count: number;
     };
-    expect(row.count).toBe(1);
+    expect(row.count).toBe(OUI_DB_LATEST_SCHEMA_VERSION);
   });
 });
 

@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
 export const OUI_DB_SCHEMA_VERSION = 1;
+export const OUI_DB_LATEST_SCHEMA_VERSION = 2;
 
 export function configureOuiSqlite(db: DatabaseSync): void {
   db.exec(`
@@ -68,15 +69,108 @@ export function runOuiMigrations(db: DatabaseSync): void {
       details_json TEXT,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS oui_companies (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      default_leader_agent_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS oui_roles (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL REFERENCES oui_companies(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      parent_role_id TEXT REFERENCES oui_roles(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oui_roles_company
+      ON oui_roles(company_id);
+
+    CREATE TABLE IF NOT EXISTS oui_agents (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL REFERENCES oui_companies(id) ON DELETE CASCADE,
+      adapter_id TEXT NOT NULL,
+      adapter_kind TEXT NOT NULL,
+      label TEXT NOT NULL,
+      role_id TEXT REFERENCES oui_roles(id) ON DELETE SET NULL,
+      reports_to_agent_id TEXT REFERENCES oui_agents(id) ON DELETE SET NULL,
+      openclaw_agent_id TEXT,
+      model_ref TEXT,
+      status TEXT NOT NULL,
+      is_leader INTEGER NOT NULL DEFAULT 0,
+      config_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oui_agents_company
+      ON oui_agents(company_id);
+
+    CREATE TABLE IF NOT EXISTS oui_tasks (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL REFERENCES oui_companies(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL,
+      review_state TEXT NOT NULL,
+      assigned_agent_id TEXT REFERENCES oui_agents(id) ON DELETE SET NULL,
+      created_by TEXT,
+      priority INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oui_tasks_company_status
+      ON oui_tasks(company_id, status, priority, created_at);
+
+    CREATE TABLE IF NOT EXISTS oui_task_dependencies (
+      task_id TEXT NOT NULL REFERENCES oui_tasks(id) ON DELETE CASCADE,
+      depends_on_task_id TEXT NOT NULL REFERENCES oui_tasks(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(task_id, depends_on_task_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS oui_task_runs (
+      task_id TEXT NOT NULL REFERENCES oui_tasks(id) ON DELETE CASCADE,
+      run_id TEXT NOT NULL REFERENCES oui_runs(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(task_id, run_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oui_task_runs_run
+      ON oui_task_runs(run_id);
+
+    CREATE TABLE IF NOT EXISTS oui_cost_events (
+      id TEXT PRIMARY KEY,
+      run_id TEXT REFERENCES oui_runs(id) ON DELETE SET NULL,
+      task_id TEXT REFERENCES oui_tasks(id) ON DELETE SET NULL,
+      agent_id TEXT REFERENCES oui_agents(id) ON DELETE SET NULL,
+      amount_micros INTEGER,
+      currency TEXT,
+      usage_json TEXT NOT NULL,
+      source TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oui_cost_events_run
+      ON oui_cost_events(run_id);
   `);
 
-  const existing = db
-    .prepare("SELECT version FROM oui_schema_migrations WHERE version = ?")
-    .get(OUI_DB_SCHEMA_VERSION);
-  if (!existing) {
-    db.prepare("INSERT INTO oui_schema_migrations(version, applied_at) VALUES (?, ?)").run(
-      OUI_DB_SCHEMA_VERSION,
-      new Date().toISOString(),
-    );
+  const now = new Date().toISOString();
+  for (const version of [OUI_DB_SCHEMA_VERSION, OUI_DB_LATEST_SCHEMA_VERSION]) {
+    const existing = db
+      .prepare("SELECT version FROM oui_schema_migrations WHERE version = ?")
+      .get(version);
+    if (!existing) {
+      db.prepare("INSERT INTO oui_schema_migrations(version, applied_at) VALUES (?, ?)").run(
+        version,
+        now,
+      );
+    }
   }
 }
