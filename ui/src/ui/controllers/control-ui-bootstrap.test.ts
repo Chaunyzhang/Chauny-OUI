@@ -330,6 +330,77 @@ describe("loadControlUiBootstrapConfig", () => {
     vi.unstubAllGlobals();
   });
 
+  it("applies bootstrap gateway settings before connecting", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        basePath: "",
+        assistantName: "Ops",
+        assistantAvatar: null,
+        assistantAgentId: null,
+        localMediaPreviewRoots: [],
+        gatewayUrl: "ws://127.0.0.1:18789",
+        token: "local-dev-token",
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const state = {
+      basePath: "",
+      assistantName: "Assistant",
+      assistantAvatar: null,
+      assistantAgentId: null,
+      localMediaPreviewRoots: [],
+      embedSandboxMode: "scripts" as const,
+      allowExternalEmbedUrls: false,
+      serverVersion: null,
+      settings: { gatewayUrl: "ws://127.0.0.1:19999", token: "" },
+      applySettings: vi.fn(),
+    };
+
+    await loadControlUiBootstrapConfig(state);
+
+    expect(state.applySettings).toHaveBeenCalledWith({
+      gatewayUrl: "ws://127.0.0.1:18789",
+      token: "local-dev-token",
+    });
+
+    vi.unstubAllGlobals();
+  });
+
+  it("clears stale tokens when bootstrap explicitly returns no token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        basePath: "",
+        assistantName: "Ops",
+        assistantAvatar: null,
+        assistantAgentId: null,
+        localMediaPreviewRoots: [],
+        token: null,
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const state = {
+      basePath: "",
+      assistantName: "Assistant",
+      assistantAvatar: null,
+      assistantAgentId: null,
+      localMediaPreviewRoots: [],
+      embedSandboxMode: "scripts" as const,
+      allowExternalEmbedUrls: false,
+      serverVersion: null,
+      settings: { gatewayUrl: "ws://127.0.0.1:18789", token: "stale-token" },
+    };
+
+    await loadControlUiBootstrapConfig(state);
+
+    expect(state.settings.token).toBe("");
+
+    vi.unstubAllGlobals();
+  });
+
   it("stops retrying on non-auth errors", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({ ok: false, status: 500 });
     vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);

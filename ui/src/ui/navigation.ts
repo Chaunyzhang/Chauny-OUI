@@ -1,4 +1,5 @@
 import { t } from "../i18n/index.ts";
+import { localizeConfigCopy } from "../i18n/lib/config-copy.ts";
 import type { IconName } from "./icons.js";
 import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
 
@@ -26,6 +27,7 @@ export const TAB_GROUPS = [
 
 export type Tab =
   | "agents"
+  | "ouiOverview"
   | "overview"
   | "channels"
   | "instances"
@@ -41,12 +43,17 @@ export type Tab =
   | "automation"
   | "infrastructure"
   | "aiAgents"
+  | "ouiChat"
+  | "setupWizard"
+  | "modelManager"
+  | "agentManager"
   | "debug"
   | "logs"
   | "dreams";
 
 const TAB_PATHS: Record<Tab, string> = {
   agents: "/agents",
+  ouiOverview: "/oui/overview",
   overview: "/overview",
   channels: "/channels",
   instances: "/instances",
@@ -62,13 +69,25 @@ const TAB_PATHS: Record<Tab, string> = {
   automation: "/automation",
   infrastructure: "/infrastructure",
   aiAgents: "/ai-agents",
+  ouiChat: "/oui/chat",
+  setupWizard: "/oui/setup",
+  modelManager: "/oui/models",
+  agentManager: "/oui/agents",
   debug: "/debug",
   logs: "/logs",
   dreams: "/dreaming",
 };
 
 const PATH_ALIASES: Record<string, Tab> = {
+  "/oui": "ouiOverview",
   "/dreams": "dreams",
+  "/oui-chat": "ouiChat",
+  "/setup": "setupWizard",
+  "/onboard": "setupWizard",
+  "/model-manager": "modelManager",
+  "/models": "modelManager",
+  "/agent-manager": "agentManager",
+  "/agents-manager": "agentManager",
 };
 
 const PATH_TO_TAB = new Map<string, Tab>([
@@ -128,7 +147,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
     normalized = "/";
   }
   if (normalized === "/") {
-    return "chat";
+    return "ouiOverview";
   }
   return PATH_TO_TAB.get(normalized) ?? null;
 }
@@ -159,7 +178,10 @@ export function iconForTab(tab: Tab): IconName {
   switch (tab) {
     case "agents":
       return "folder";
+    case "ouiOverview":
+      return "barChart";
     case "chat":
+    case "ouiChat":
       return "messageSquare";
     case "overview":
       return "barChart";
@@ -189,6 +211,12 @@ export function iconForTab(tab: Tab): IconName {
       return "globe";
     case "aiAgents":
       return "brain";
+    case "setupWizard":
+      return "spark";
+    case "modelManager":
+      return "brain";
+    case "agentManager":
+      return "folder";
     case "debug":
       return "bug";
     case "logs":
@@ -200,10 +228,54 @@ export function iconForTab(tab: Tab): IconName {
   }
 }
 
+export function isChatTab(tab: Tab): boolean {
+  return tab === "chat" || tab === "ouiChat";
+}
+
+export function isOuiTab(tab: Tab): boolean {
+  return (
+    tab === "ouiOverview" ||
+    tab === "ouiChat" ||
+    tab === "setupWizard" ||
+    tab === "modelManager" ||
+    tab === "agentManager"
+  );
+}
+
 export function titleForTab(tab: Tab) {
+  if (tab === "ouiOverview") {
+    return localizeConfigCopy("Overview");
+  }
+  if (tab === "ouiChat") {
+    return t("tabs.chat");
+  }
+  if (tab === "setupWizard") {
+    return localizeConfigCopy("Setup Wizard");
+  }
+  if (tab === "modelManager") {
+    return localizeConfigCopy("Model Manager");
+  }
+  if (tab === "agentManager") {
+    return localizeConfigCopy("Agent Manager");
+  }
   return t(`tabs.${tab}`);
 }
 
 export function subtitleForTab(tab: Tab) {
+  if (tab === "ouiOverview") {
+    return localizeConfigCopy("Gateway status and token access");
+  }
+  if (tab === "ouiChat") {
+    return t("subtitles.chat");
+  }
+  if (tab === "setupWizard") {
+    return localizeConfigCopy("Configure model plans and chat apps");
+  }
+  if (tab === "modelManager") {
+    return localizeConfigCopy("Manage configured models");
+  }
+  if (tab === "agentManager") {
+    return localizeConfigCopy("Manage configured agents");
+  }
   return t(`subtitles.${tab}`);
 }

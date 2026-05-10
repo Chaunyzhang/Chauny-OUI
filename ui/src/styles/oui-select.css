@@ -1,0 +1,121 @@
+oui-select {
+  display: block;
+  position: relative;
+  min-width: 0;
+}
+
+.oui-select {
+  position: relative;
+  min-width: 0;
+}
+
+.oui-select__button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  outline: none;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    background 120ms ease;
+  user-select: none;
+}
+
+.oui-select__button::-webkit-details-marker,
+.oui-select__button::marker {
+  display: none;
+  content: "";
+}
+
+.oui-select[open] .oui-select__button,
+.oui-select__button:focus-visible {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+  box-shadow: var(--focus-ring);
+}
+
+oui-select[disabled] .oui-select__button {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.oui-select__value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oui-select__chevron {
+  width: 0;
+  height: 0;
+  border-right: 5px solid transparent;
+  border-left: 5px solid transparent;
+  border-top: 6px solid var(--muted);
+  flex: 0 0 auto;
+  transition: transform 120ms ease;
+}
+
+.oui-select[open] .oui-select__chevron {
+  transform: rotate(180deg);
+}
+
+.oui-select__menu {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  display: grid;
+  max-height: min(310px, 42vh);
+  overflow: auto;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
+  border-radius: var(--radius-md);
+  background: var(--popover, var(--bg-elevated));
+  box-shadow: var(--shadow-lg);
+  isolation: isolate;
+}
+
+.oui-select__option {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 3px);
+  background: var(--popover, var(--bg-elevated));
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.oui-select__option:hover,
+.oui-select__option:focus-visible {
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-hover) 88%);
+  outline: none;
+}
+
+.oui-select__option--selected {
+  background: color-mix(in srgb, var(--accent) 24%, var(--bg-elevated) 76%);
+  color: var(--text-strong);
+  font-weight: 750;
+}
+
+.oui-select__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}

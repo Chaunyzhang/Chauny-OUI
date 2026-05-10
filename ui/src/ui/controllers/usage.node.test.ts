@@ -100,6 +100,28 @@ describe("usage controller date interpretation params", () => {
     });
   });
 
+  it("can skip cost and context weight for lightweight embedded usage summaries", async () => {
+    const request = vi.fn(async () => ({}));
+    const state = createState(request, { usageTimeZone: "utc" });
+
+    await loadUsage(state, {
+      includeCost: false,
+      includeContextWeight: false,
+      limit: 100,
+    });
+
+    expect(request).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledWith("sessions.usage", {
+      startDate: "2026-02-16",
+      endDate: "2026-02-16",
+      mode: "utc",
+      groupBy: "family",
+      includeHistorical: true,
+      limit: 100,
+      includeContextWeight: false,
+    });
+  });
+
   it("captures useful error strings in loadUsage", async () => {
     const request = vi.fn(async () => {
       throw new Error("request failed");

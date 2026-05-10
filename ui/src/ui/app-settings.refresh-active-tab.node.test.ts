@@ -270,7 +270,7 @@ describe("refreshActiveTab", () => {
   it("does not wait for secondary overview refreshes before resolving", async () => {
     const host = createHost();
     host.tab = "overview";
-    mocks.loadUsageMock.mockReturnValueOnce(new Promise<void>(() => undefined));
+    mocks.loadSkillsMock.mockReturnValueOnce(new Promise<void>(() => undefined));
 
     const refresh = refreshActiveTab(host as never);
     const outcome = await raceWithNextMacrotask(refresh);
@@ -278,10 +278,10 @@ describe("refreshActiveTab", () => {
     expect(outcome).toBe("resolved");
     expect(mocks.loadChannelsMock).toHaveBeenCalled();
     expect(mocks.loadSessionsMock).toHaveBeenCalled();
-    expect(mocks.loadUsageMock).toHaveBeenCalled();
+    expect(mocks.loadUsageMock).not.toHaveBeenCalled();
   });
 
-  it("does not wait for config schema before resolving config tab refresh", async () => {
+  it("waits for config schema before resolving config tab refresh", async () => {
     const host = createHost();
     host.tab = "config";
     const schema = createDeferred();
@@ -290,19 +290,21 @@ describe("refreshActiveTab", () => {
     const refresh = refreshActiveTab(host as never);
     const outcome = await raceWithNextMacrotask(refresh);
 
-    expect(outcome).toBe("resolved");
+    expect(outcome).toBe("pending");
     expect(mocks.loadConfigSchemaMock).toHaveBeenCalledOnce();
-    expect(mocks.loadConfigMock).toHaveBeenCalledOnce();
+    expect(mocks.loadConfigMock).not.toHaveBeenCalled();
     expect(host.requestUpdate).not.toHaveBeenCalled();
 
     schema.resolve();
 
     await vi.waitFor(() => {
-      expect(host.requestUpdate).toHaveBeenCalledOnce();
+      expect(mocks.loadConfigMock).toHaveBeenCalledOnce();
     });
+    await expect(refresh).resolves.toBeUndefined();
+    expect(host.requestUpdate).not.toHaveBeenCalled();
   });
 
-  it("renders channels from the cheap snapshot before starting slow probes", async () => {
+  it("waits for channel probes and config before resolving the channels tab", async () => {
     const host = createHost();
     host.tab = "channels";
     const schema = createDeferred();
@@ -317,28 +319,27 @@ describe("refreshActiveTab", () => {
     const refresh = refreshActiveTab(host as never);
     const outcome = await raceWithNextMacrotask(refresh);
 
-    expect(outcome).toBe("resolved");
-    expect(mocks.loadChannelsMock.mock.calls.map(([, probe]) => probe)).toEqual([false, true]);
+    expect(outcome).toBe("pending");
+    expect(mocks.loadChannelsMock.mock.calls.map(([, probe]) => probe)).toEqual([true]);
     expect(mocks.loadConfigMock).toHaveBeenCalledOnce();
     expect(host.requestUpdate).not.toHaveBeenCalled();
 
     schema.resolve();
     channelProbe.resolve();
 
-    await vi.waitFor(() => {
-      expect(host.requestUpdate).toHaveBeenCalledTimes(2);
-    });
+    await expect(refresh).resolves.toBeUndefined();
+    expect(host.requestUpdate).not.toHaveBeenCalled();
   });
 
   it("records overview secondary refresh duration and aggregate status", async () => {
     const host = createHost();
     host.tab = "overview";
-    const usage = createDeferred();
-    mocks.loadUsageMock.mockReturnValueOnce(usage.promise);
+    const logs = createDeferred();
+    mocks.loadLogsMock.mockReturnValueOnce(logs.promise);
     mocks.loadSkillsMock.mockRejectedValueOnce(new Error("skills failed"));
 
     await refreshActiveTab(host as never);
-    usage.resolve();
+    logs.resolve();
 
     await vi.waitFor(() => {
       expectBufferedPerformanceEvent(host, "control-ui.overview.secondary", {
@@ -346,6 +347,7 @@ describe("refreshActiveTab", () => {
         status: "error",
       });
     });
+    expect(mocks.loadUsageMock).not.toHaveBeenCalled();
   });
 
   it("does not wait for cron runs before resolving the cron tab refresh", async () => {

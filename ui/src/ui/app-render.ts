@@ -1,6 +1,8 @@
 import { html, nothing } from "lit";
 import { styleMap } from "lit/directives/style-map.js";
+import { CONTROL_UI_BOOTSTRAP_CONFIG_PATH } from "../../../src/gateway/control-ui-contract.js";
 import { t } from "../i18n/index.ts";
+import { isZhCnConfigCopy, localizeConfigCopy } from "../i18n/lib/config-copy.ts";
 import { getSafeLocalStorage } from "../local-storage.ts";
 import { hasAbortableSessionRun, refreshChat } from "./app-chat.ts";
 import { DEFAULT_CRON_FORM } from "./app-defaults.ts";
@@ -8,6 +10,8 @@ import { renderUsageTab } from "./app-render-usage-tab.ts";
 import {
   renderChatControls,
   renderChatMobileToggle,
+  renderOuiMainChatWindowHeader,
+  renderOuiChatSessionSelect,
   renderChatSessionSelect,
   renderTab,
   resolveAssistantAttachmentAuthToken,
@@ -112,6 +116,11 @@ import {
   toggleSessionCompactionCheckpoints,
 } from "./controllers/sessions.ts";
 import {
+  cancelSetupWizard,
+  startSetupWizard,
+  submitSetupWizardAnswer,
+} from "./controllers/setup-wizard.ts";
+import {
   closeClawHubDetail,
   installFromClawHub,
   installSkill,
@@ -123,28 +132,37 @@ import {
   updateSkillEdit,
   updateSkillEnabled,
 } from "./controllers/skills.ts";
+import { loadUsage } from "./controllers/usage.ts";
 import { getCronJobPayload } from "./cron-payload.ts";
 import { buildExternalLinkRel, EXTERNAL_LINK_TARGET } from "./external-link.ts";
 import { icons } from "./icons.ts";
 import { createLazyView, renderLazyView } from "./lazy-view.ts";
 import {
+  buildQuickModelSetupPatch,
+  getDefaultQuickModelPlanId,
+  resolveQuickModelPlan,
+} from "./model-plan-setup.ts";
+import {
   normalizeBasePath,
   TAB_GROUPS,
+  isChatTab,
+  isOuiTab,
   subtitleForTab,
   titleForTab,
   type Tab,
 } from "./navigation.ts";
 import { isPluginEnabledInConfigSnapshot } from "./plugin-activation.ts";
-import "./components/dashboard-header.ts";
 import {
   buildAgentMainSessionKey,
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
 } from "./session-key.ts";
-import { loadLocalAssistantIdentity } from "./storage.ts";
+import "./components/dashboard-header.ts";
+import { loadLocalAssistantIdentity, type UiNavigationMode } from "./storage.ts";
 import { normalizeOptionalString } from "./string-coerce.ts";
-import { isRenderableControlUiAvatarUrl } from "./views/agents-utils.ts";
-import { agentLogoUrl } from "./views/agents-utils.ts";
+import type { AgentsCreateResult, AgentsDeleteResult } from "./types.ts";
+import { renderAgentManager, suggestAgentWorkspace } from "./views/agent-manager.ts";
+import { agentLogoUrl, isRenderableControlUiAvatarUrl, ouiLogoUrl } from "./views/agents-utils.ts";
 import {
   resolveAgentConfig,
   resolveConfiguredCronModelSuggestions,
@@ -166,8 +184,12 @@ import { renderDreamingRestartConfirmation } from "./views/dreaming-restart-conf
 import { renderDreaming } from "./views/dreaming.ts";
 import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
-import { renderLoginGate } from "./views/login-gate.ts";
+import { renderModelManager } from "./views/model-manager.ts";
+import { renderOuiChat } from "./views/oui-chat.ts";
+import { renderOuiOverview } from "./views/oui-overview.ts";
 import { renderOverview } from "./views/overview.ts";
+import { renderParallelChat } from "./views/parallel-chat.ts";
+import { renderSetupWizard } from "./views/setup-wizard.ts";
 
 let _pendingUpdate: (() => void) | undefined;
 
@@ -184,6 +206,47 @@ const lazyLogs = createLazyView(() => import("./views/logs.ts"), notifyLazyViewC
 const lazyNodes = createLazyView(() => import("./views/nodes.ts"), notifyLazyViewChanged);
 const lazySessions = createLazyView(() => import("./views/sessions.ts"), notifyLazyViewChanged);
 const lazySkills = createLazyView(() => import("./views/skills.ts"), notifyLazyViewChanged);
+
+function asRenderRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function resolveConfigDefaultModel(config: Record<string, unknown> | null): string | null {
+  const defaults = asRenderRecord(asRenderRecord(config?.agents)?.defaults);
+  const model = defaults?.model;
+  if (typeof model === "string") {
+    return model.trim() || null;
+  }
+  const modelRecord = asRenderRecord(model);
+  const primary = modelRecord?.primary ?? modelRecord?.model;
+  return typeof primary === "string" && primary.trim() ? primary.trim() : null;
+}
+
+function modelProviderFromRef(modelRef: string | null): string | null {
+  const slash = modelRef?.indexOf("/") ?? -1;
+  if (!modelRef || slash <= 0) {
+    return null;
+  }
+  return modelRef.slice(0, slash).toLowerCase();
+}
+
+function formatUsageDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate(),
+  ).padStart(2, "0")}`;
+}
+
+function getSevenDayUsageRange() {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(end.getDate() - 6);
+  return {
+    startDate: formatUsageDate(start),
+    endDate: formatUsageDate(end),
+  };
+}
 
 function formatDreamNextCycle(nextRunAtMs: number | undefined): string | null {
   if (typeof nextRunAtMs !== "number" || !Number.isFinite(nextRunAtMs)) {
@@ -372,6 +435,7 @@ type ConfigTabOverrides = Pick<
       | "includeSections"
       | "excludeSections"
       | "includeVirtualSections"
+      | "sectionOverrides"
       | "settingsLayout"
       | "onBackToQuick"
       | "webPush"
@@ -433,6 +497,218 @@ function renderMeasured<T>(
     durationMs: roundedControlUiDurationMs(controlUiNowMs() - startedAtMs),
   });
   return result;
+}
+
+function ouiMessage(en: string, zh: string): string {
+  return isZhCnConfigCopy() ? zh : en;
+}
+
+function resolveControlUiBootstrapUrl(state: AppViewState): string {
+  const basePath = normalizeBasePath(state.basePath ?? "");
+  return basePath
+    ? `${basePath}${CONTROL_UI_BOOTSTRAP_CONFIG_PATH}`
+    : CONTROL_UI_BOOTSTRAP_CONFIG_PATH;
+}
+
+function readBootstrapString(config: unknown, key: "gatewayUrl" | "token"): string | null {
+  const record = asRenderRecord(config);
+  const value = record?.[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard?.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function handleOuiOverviewGetToken(state: AppViewState, requestHostUpdate?: () => void) {
+  const existingToken = normalizeOptionalString(state.settings.token);
+  if (existingToken) {
+    state.ouiOverviewTokenMessage = {
+      kind: "success",
+      text: ouiMessage("Token is ready. Connecting gateway.", "Token 已就绪，正在连接 Gateway。"),
+    };
+    state.connect();
+    requestHostUpdate?.();
+    return;
+  }
+
+  state.ouiOverviewTokenBusy = true;
+  state.ouiOverviewTokenMessage = null;
+  requestHostUpdate?.();
+  try {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const password = normalizeOptionalString(state.password);
+    if (password && !/[\r\n]/.test(password)) {
+      headers.Authorization = `Bearer ${password}`;
+    }
+    const res = await fetch(resolveControlUiBootstrapUrl(state), {
+      method: "GET",
+      headers,
+      credentials: "same-origin",
+    });
+    if (res.ok) {
+      const config = (await res.json()) as unknown;
+      const token = readBootstrapString(config, "token");
+      const gatewayUrl = readBootstrapString(config, "gatewayUrl");
+      if (token) {
+        state.applySettings({
+          ...state.settings,
+          ...(gatewayUrl ? { gatewayUrl } : {}),
+          token,
+        });
+        state.ouiOverviewTokenMessage = {
+          kind: "success",
+          text: ouiMessage(
+            "Token was applied. Connecting gateway.",
+            "Token 已写入，正在连接 Gateway。",
+          ),
+        };
+        state.connect();
+        return;
+      }
+      if (gatewayUrl && gatewayUrl !== state.settings.gatewayUrl) {
+        state.applySettings({ ...state.settings, gatewayUrl });
+      }
+    }
+
+    const command = "openclaw dashboard --no-open";
+    const copied = await copyText(command);
+    state.ouiOverviewTokenMessage = {
+      kind: copied ? "success" : "error",
+      text: copied
+        ? ouiMessage(`Command copied: ${command}`, `已复制指令：${command}`)
+        : ouiMessage(`Run this command: ${command}`, `请运行指令：${command}`),
+    };
+  } catch (err) {
+    const command = "openclaw dashboard --no-open";
+    const copied = await copyText(command);
+    state.ouiOverviewTokenMessage = {
+      kind: copied ? "success" : "error",
+      text: copied
+        ? ouiMessage(`Command copied: ${command}`, `已复制指令：${command}`)
+        : String(err),
+    };
+  } finally {
+    state.ouiOverviewTokenBusy = false;
+    requestHostUpdate?.();
+  }
+}
+
+function resolveNavigationMode(state: AppViewState): UiNavigationMode {
+  return state.settings.navigationMode ?? "oui";
+}
+
+function selectNavigationMode(state: AppViewState, mode: UiNavigationMode) {
+  if (resolveNavigationMode(state) !== mode) {
+    state.applySettings({ ...state.settings, navigationMode: mode });
+  }
+  if (mode === "oui") {
+    state.aiAgentsActiveSection = "agents";
+    state.aiAgentsActiveSubsection = null;
+    state.aiAgentsFormMode = "form";
+    state.setTab("ouiOverview");
+    return;
+  }
+  if (isOuiTab(state.tab)) {
+    const nextTab = state.tab === "ouiChat" || state.tab === "ouiOverview" ? "chat" : "aiAgents";
+    state.aiAgentsActiveSection = "models";
+    state.aiAgentsActiveSubsection = null;
+    state.setTab(nextTab);
+  }
+}
+
+function renderNavigationModeSwitch(state: AppViewState, collapsed: boolean) {
+  const mode = resolveNavigationMode(state);
+  const options: Array<{ id: UiNavigationMode; label: string }> = [
+    { id: "oui", label: localizeConfigCopy("OUI") },
+    { id: "original", label: localizeConfigCopy("Original") },
+  ];
+  return html`
+    <div
+      class="sidebar-surface-switch ${collapsed ? "sidebar-surface-switch--collapsed" : ""}"
+      role="group"
+      aria-label=${localizeConfigCopy("Navigation mode")}
+    >
+      ${options.map((option) => {
+        const active = mode === option.id;
+        return html`
+          <button
+            type="button"
+            class="sidebar-surface-switch__button ${active
+              ? "sidebar-surface-switch__button--active"
+              : ""}"
+            aria-pressed=${active ? "true" : "false"}
+            title=${option.label}
+            @click=${() => selectNavigationMode(state, option.id)}
+          >
+            ${option.label}
+          </button>
+        `;
+      })}
+    </div>
+  `;
+}
+
+function renderOriginalNavigation(state: AppViewState, collapsed: boolean) {
+  return html`
+    ${TAB_GROUPS.map((group) => {
+      const isGroupCollapsed = state.settings.navGroupsCollapsed[group.label] ?? false;
+      const hasActiveTab = group.tabs.some((tab) => tab === state.tab);
+      const showItems = collapsed || hasActiveTab || !isGroupCollapsed;
+
+      return html`
+        <section class="nav-section ${!showItems ? "nav-section--collapsed" : ""}">
+          ${!collapsed
+            ? html`
+                <button
+                  class="nav-section__label"
+                  @click=${() => {
+                    const next = { ...state.settings.navGroupsCollapsed };
+                    next[group.label] = !isGroupCollapsed;
+                    state.applySettings({
+                      ...state.settings,
+                      navGroupsCollapsed: next,
+                    });
+                  }}
+                  aria-expanded=${showItems}
+                >
+                  <span class="nav-section__label-text">${t(`nav.${group.label}`)}</span>
+                  <span class="nav-section__chevron"> ${icons.chevronDown} </span>
+                </button>
+              `
+            : nothing}
+          <div class="nav-section__items">
+            ${group.tabs.map((tab) => renderTab(state, tab, { collapsed }))}
+          </div>
+        </section>
+      `;
+    })}
+  `;
+}
+
+function renderOuiNavigation(state: AppViewState, collapsed: boolean) {
+  return html`
+    <section class="nav-section">
+      ${!collapsed
+        ? html`
+            <div class="nav-section__heading">
+              <span class="nav-section__label-text">${localizeConfigCopy("OUI")}</span>
+            </div>
+          `
+        : nothing}
+      <div class="nav-section__items">
+        ${renderTab(state, "ouiOverview", { collapsed })}
+        ${renderTab(state, "ouiChat", { collapsed })}
+        ${renderTab(state, "modelManager", { collapsed })}
+        ${renderTab(state, "agentManager", { collapsed })}
+      </div>
+    </section>
+  `;
 }
 
 function resolveAssistantAvatarUrl(state: AppViewState): string | undefined {
@@ -578,16 +854,16 @@ export function extractQuickSettingsSecurity(state: AppViewState): {
       gatewayAuth = "none";
     }
   }
+  const agents = cfg.agents;
   let execPolicy = "allowlist";
-  const tools = cfg.tools;
-  if (tools && typeof tools === "object") {
-    const exec = (tools as Record<string, unknown>).exec;
-    if (exec && typeof exec === "object") {
-      const security = (exec as Record<string, unknown>).security;
-      if (typeof security === "string") {
-        const trimmedSecurity = security.trim();
-        if (trimmedSecurity) {
-          execPolicy = trimmedSecurity;
+  if (agents && typeof agents === "object") {
+    const defaults = (agents as Record<string, unknown>).defaults;
+    if (defaults && typeof defaults === "object") {
+      const exec = (defaults as Record<string, unknown>).exec;
+      if (exec && typeof exec === "object") {
+        const security = (exec as Record<string, unknown>).security;
+        if (typeof security === "string") {
+          execPolicy = security;
         }
       }
     }
@@ -663,18 +939,13 @@ export function renderApp(state: AppViewState) {
       : undefined;
   _pendingUpdate = requestHostUpdate;
 
-  // Gate: require successful gateway connection before showing the dashboard.
-  // The gateway URL confirmation overlay is always rendered so URL-param flows still work.
-  if (!state.connected) {
-    return html` ${renderLoginGate(state)} ${renderGatewayUrlConfirmation(state)} `;
-  }
-
   const presenceCount = state.presenceEntries.length;
   const sessionsCount = state.sessionsResult?.count ?? null;
   const cronNext = state.cronStatus?.nextWakeAtMs ?? null;
   const chatDisabledReason = state.connected ? null : t("chat.disconnected");
-  const isChat = state.tab === "chat";
-  const chatFocus = isChat && (state.settings.chatFocusMode || state.onboarding);
+  const isChat = isChatTab(state.tab);
+  const chatFocus =
+    isChat && !state.chatParallelMode && (state.settings.chatFocusMode || state.onboarding);
   const navDrawerOpen = state.navDrawerOpen && !chatFocus && !state.onboarding;
   const navCollapsed = state.settings.navCollapsed && !navDrawerOpen;
   const dashboardHeaderContext = resolveDashboardHeaderContext(state);
@@ -825,6 +1096,8 @@ export function renderApp(state: AppViewState) {
     })();
   };
   const basePath = normalizeBasePath(state.basePath ?? "");
+  const isOuiNavigationMode = resolveNavigationMode(state) === "oui";
+  const brandLogoSrc = isOuiNavigationMode ? ouiLogoUrl(basePath) : agentLogoUrl(basePath);
   const resolveSelectedAgentId = () =>
     state.agentsSelectedId ??
     state.agentsList?.defaultId ??
@@ -974,6 +1247,7 @@ export function renderApp(state: AppViewState) {
     | "includeSections"
     | "excludeSections"
     | "includeVirtualSections"
+    | "sectionOverrides"
   >;
   const renderConfigTab = (overrides: ConfigTabOverrides) =>
     renderMeasured(
@@ -981,9 +1255,7 @@ export function renderApp(state: AppViewState) {
       "config",
       {
         tab: state.tab,
-        formMode: overrides.formMode,
         activeSection: overrides.activeSection,
-        activeSubsection: overrides.activeSubsection,
         schemaSectionCount: countTopLevelSchemaProperties(commonConfigProps.schema),
         hasSearch: Boolean(overrides.searchQuery?.trim()),
       },
@@ -1023,6 +1295,446 @@ export function renderApp(state: AppViewState) {
     state.aiAgentsActiveSubsection,
     AI_AGENTS_SECTION_KEYS,
   );
+  const saveDefaultModel = async (modelRef: string, runtimeId?: string | null) => {
+    const trimmed = modelRef.trim();
+    if (!trimmed) {
+      return;
+    }
+    state.setupModelSaving = true;
+    state.setupModelMessage = null;
+    requestHostUpdate?.();
+    try {
+      const patch: Record<string, unknown> = {
+        agents: {
+          defaults: {
+            model: { primary: trimmed },
+          },
+        },
+      };
+      if (runtimeId) {
+        patch.agents = {
+          defaults: {
+            model: { primary: trimmed },
+            agentRuntime: { id: runtimeId },
+          },
+        };
+      }
+      if (!state.configForm && !state.configSnapshot?.hash) {
+        await loadConfig(state, { discardPendingChanges: true });
+      }
+      stageConfigPreset(state, patch);
+      const ok = await saveConfig(state);
+      state.setupModelMessage = ok
+        ? {
+            kind: "success",
+            text: setupMessage(
+              `Saved ${trimmed} as the default model.`,
+              `已保存 ${trimmed}，并设为默认模型。`,
+            ),
+          }
+        : {
+            kind: "error",
+            text: state.lastError ?? setupMessage("Failed to save config.", "保存配置失败。"),
+          };
+    } catch (err) {
+      state.setupModelMessage = { kind: "error", text: String(err) };
+    } finally {
+      state.setupModelSaving = false;
+      requestHostUpdate?.();
+    }
+  };
+  const saveRemoveProvider = async (providerId: string) => {
+    const trimmed = providerId.trim();
+    if (!trimmed) {
+      return;
+    }
+    state.setupModelSaving = true;
+    state.setupModelMessage = null;
+    requestHostUpdate?.();
+    try {
+      if (!state.configForm && !state.configSnapshot?.hash) {
+        await loadConfig(state, { discardPendingChanges: true });
+      }
+      const config = state.configForm ?? state.configSnapshot?.config ?? null;
+      const patch: Record<string, unknown> = {
+        models: {
+          providers: {
+            [trimmed]: null,
+          },
+        },
+      };
+      const defaultProvider = modelProviderFromRef(resolveConfigDefaultModel(config));
+      if (defaultProvider === trimmed.toLowerCase()) {
+        patch.agents = {
+          defaults: {
+            model: null,
+          },
+        };
+      }
+      stageConfigPreset(state, patch);
+      const ok = await saveConfig(state);
+      state.setupModelMessage = ok
+        ? {
+            kind: "success",
+            text: setupMessage(`Removed ${trimmed}.`, `已移除 ${trimmed}。`),
+          }
+        : {
+            kind: "error",
+            text: state.lastError ?? setupMessage("Failed to save config.", "保存配置失败。"),
+          };
+      if (ok) {
+        state.setTab("modelManager");
+      }
+    } catch (err) {
+      state.setupModelMessage = { kind: "error", text: String(err) };
+    } finally {
+      state.setupModelSaving = false;
+      requestHostUpdate?.();
+    }
+  };
+  const renderModelManagerSection = () =>
+    renderModelManager({
+      basePath: state.basePath,
+      catalog: state.chatModelCatalog ?? [],
+      catalogLoading: state.chatModelsLoading,
+      authStatus: state.modelAuthStatusResult,
+      authLoading: state.modelAuthStatusLoading,
+      authError: state.modelAuthStatusError,
+      config: state.configForm ?? state.configSnapshot?.config ?? null,
+      configLoading: state.configLoading,
+      configDirty: state.configFormDirty,
+      connected: state.connected,
+      usageResult: state.usageResult,
+      usageLoading: state.usageLoading,
+      usageError: state.usageError,
+      onRefresh: () => {
+        state.setTab("modelManager");
+      },
+      onUsageRefresh: () =>
+        loadUsage(state, {
+          ...getSevenDayUsageRange(),
+          includeCost: false,
+          includeContextWeight: false,
+        }),
+      onSetDefaultModel: (modelRef, runtimeId) => {
+        void saveDefaultModel(modelRef, runtimeId);
+      },
+      onRemoveProvider: (providerId) => {
+        void saveRemoveProvider(providerId);
+      },
+      configReady: Boolean(state.configForm || state.configSnapshot?.hash),
+      setupModelProviderId: state.setupModelProviderId,
+      setupModelPlanId: state.setupModelPlanId,
+      setupModelApiKey: state.setupModelApiKey,
+      setupModelSaving: state.setupModelSaving,
+      setupModelMessage: state.setupModelMessage,
+      onSetupModelProviderChange: (providerId) => {
+        state.setupModelProviderId = providerId;
+        state.setupModelPlanId = getDefaultQuickModelPlanId(providerId);
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelPlanChange: (planId) => {
+        state.setupModelPlanId = planId;
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelApiKeyChange: (apiKey) => {
+        state.setupModelApiKey = apiKey;
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelApply: () => {
+        void applyQuickModelSetup();
+      },
+    });
+  const refreshAfterSetupWizard = () => {
+    if (!state.setupWizardSessionId) {
+      void loadConfig(state, { discardPendingChanges: true }).finally(() => {
+        state.setTab("setupWizard");
+      });
+      return;
+    }
+    requestHostUpdate?.();
+  };
+  const setupMessage = (en: string, zh: string) => (state.settings.locale === "zh-CN" ? zh : en);
+  const refreshAgentManagerData = async () => {
+    await Promise.allSettled([
+      loadConfig(state, { discardPendingChanges: true }),
+      loadAgents(state),
+    ]);
+    await loadAgentIdentities(state, state.agentsList?.agents.map((agent) => agent.id) ?? []);
+    requestHostUpdate?.();
+  };
+  const applyQuickAgentSetup = async () => {
+    if (!state.client || !state.connected) {
+      state.setupAgentMessage = {
+        kind: "error",
+        text: setupMessage("Gateway disconnected.", "Gateway 未连接。"),
+      };
+      requestHostUpdate?.();
+      return;
+    }
+    const name = state.setupAgentName.trim();
+    const workspace = state.setupAgentWorkspace.trim();
+    if (!name || !workspace) {
+      state.setupAgentMessage = {
+        kind: "error",
+        text: setupMessage("Agent ID and workspace are required.", "需要填写 Agent ID 和工作区。"),
+      };
+      requestHostUpdate?.();
+      return;
+    }
+    state.setupAgentSaving = true;
+    state.setupAgentMessage = null;
+    requestHostUpdate?.();
+    try {
+      const params: Record<string, string> = { name, workspace };
+      const model = state.setupAgentModel.trim();
+      const emoji = state.setupAgentEmoji.trim();
+      if (model) {
+        params.model = model;
+      }
+      if (emoji) {
+        params.emoji = emoji;
+      }
+      const result = await state.client.request<AgentsCreateResult>("agents.create", params);
+      state.setupAgentName = "";
+      state.setupAgentWorkspace = "";
+      state.setupAgentModel = "";
+      state.setupAgentEmoji = "";
+      state.agentsSelectedId = result.agentId;
+      state.setupAgentMessage = {
+        kind: "success",
+        text: setupMessage(`Created agent ${result.agentId}.`, `已创建 Agent ${result.agentId}。`),
+      };
+      await refreshAgentManagerData();
+    } catch (err) {
+      state.setupAgentMessage = { kind: "error", text: String(err) };
+    } finally {
+      state.setupAgentSaving = false;
+      requestHostUpdate?.();
+    }
+  };
+  const saveDefaultAgent = async (agentId: string) => {
+    const trimmed = agentId.trim();
+    if (!trimmed) {
+      return;
+    }
+    state.setupAgentSaving = true;
+    state.setupAgentMessage = null;
+    requestHostUpdate?.();
+    try {
+      if (!state.configForm && !state.configSnapshot?.hash) {
+        await loadConfig(state, { discardPendingChanges: true });
+      }
+      ensureAgentConfigEntry(state, trimmed);
+      const staged = stageDefaultAgentConfigEntry(state, trimmed);
+      const ok = staged ? await saveConfig(state) : false;
+      state.setupAgentMessage = ok
+        ? {
+            kind: "success",
+            text: setupMessage(
+              `Set ${trimmed} as the default agent.`,
+              `已将 ${trimmed} 设为默认 Agent。`,
+            ),
+          }
+        : {
+            kind: "error",
+            text: state.lastError ?? setupMessage("Failed to save config.", "保存配置失败。"),
+          };
+      if (ok) {
+        await refreshAgentManagerData();
+      }
+    } catch (err) {
+      state.setupAgentMessage = { kind: "error", text: String(err) };
+    } finally {
+      state.setupAgentSaving = false;
+      requestHostUpdate?.();
+    }
+  };
+  const removeAgentConfig = async (agentId: string) => {
+    const trimmed = agentId.trim();
+    if (!state.client || !state.connected || !trimmed || trimmed === "main") {
+      return;
+    }
+    state.setupAgentSaving = true;
+    state.setupAgentMessage = null;
+    requestHostUpdate?.();
+    try {
+      await state.client.request<AgentsDeleteResult>("agents.delete", {
+        agentId: trimmed,
+        deleteFiles: false,
+      });
+      if (state.agentsSelectedId === trimmed) {
+        state.agentsSelectedId = null;
+      }
+      const nextIdentityById = { ...state.agentIdentityById };
+      delete nextIdentityById[trimmed];
+      state.agentIdentityById = nextIdentityById;
+      state.setupAgentMessage = {
+        kind: "success",
+        text: setupMessage(`Removed ${trimmed}.`, `已移除 ${trimmed}。`),
+      };
+      await refreshAgentManagerData();
+    } catch (err) {
+      state.setupAgentMessage = { kind: "error", text: String(err) };
+    } finally {
+      state.setupAgentSaving = false;
+      requestHostUpdate?.();
+    }
+  };
+  const renderAgentManagerSection = () =>
+    renderAgentManager({
+      basePath: state.basePath,
+      connected: state.connected,
+      agentsLoading: state.agentsLoading,
+      agentsError: state.agentsError,
+      agentsList: state.agentsList,
+      identityById: state.agentIdentityById,
+      catalog: state.chatModelCatalog ?? [],
+      catalogLoading: state.chatModelsLoading,
+      config: state.configForm ?? state.configSnapshot?.config ?? null,
+      configLoading: state.configLoading || state.configSaving,
+      setupAgentName: state.setupAgentName,
+      setupAgentWorkspace: state.setupAgentWorkspace,
+      setupAgentModel: state.setupAgentModel,
+      setupAgentEmoji: state.setupAgentEmoji,
+      setupAgentSaving: state.setupAgentSaving,
+      setupAgentMessage: state.setupAgentMessage,
+      onSetupAgentNameChange: (name) => {
+        const previousSuggestion = suggestAgentWorkspace(state.setupAgentName);
+        state.setupAgentName = name;
+        if (!state.setupAgentWorkspace.trim() || state.setupAgentWorkspace === previousSuggestion) {
+          state.setupAgentWorkspace = suggestAgentWorkspace(name);
+        }
+        state.setupAgentMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupAgentWorkspaceChange: (workspace) => {
+        state.setupAgentWorkspace = workspace;
+        state.setupAgentMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupAgentModelChange: (model) => {
+        state.setupAgentModel = model;
+        state.setupAgentMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupAgentEmojiChange: (emoji) => {
+        state.setupAgentEmoji = emoji;
+        state.setupAgentMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupAgentApply: () => {
+        void applyQuickAgentSetup();
+      },
+      onRefresh: () => {
+        state.setTab("agentManager");
+      },
+      onSetDefaultAgent: (agentId) => {
+        void saveDefaultAgent(agentId);
+      },
+      onRemoveAgent: (agentId) => {
+        void removeAgentConfig(agentId);
+      },
+    });
+  const applyQuickModelSetup = async () => {
+    state.setupModelSaving = true;
+    state.setupModelMessage = null;
+    requestHostUpdate?.();
+    try {
+      if (!state.configForm && !state.configSnapshot?.hash) {
+        await loadConfig(state, { discardPendingChanges: true });
+      }
+      const plan = resolveQuickModelPlan(state.setupModelProviderId, state.setupModelPlanId);
+      const patch = buildQuickModelSetupPatch(plan, state.setupModelApiKey);
+      stageConfigPreset(state, patch);
+      const ok = await saveConfig(state);
+      if (!ok) {
+        state.setupModelMessage = {
+          kind: "error",
+          text: state.lastError ?? setupMessage("Failed to save config.", "保存配置失败。"),
+        };
+        return;
+      }
+      state.setupModelApiKey = "";
+      state.setupModelMessage = {
+        kind: "success",
+        text: setupMessage(
+          `Saved ${plan.providerId}/${plan.defaultModelId} as the default model.`,
+          `已保存 ${plan.providerId}/${plan.defaultModelId}，并设为默认模型。`,
+        ),
+      };
+      state.setTab(state.tab === "setupWizard" ? "setupWizard" : "modelManager");
+    } catch (err) {
+      state.setupModelMessage = { kind: "error", text: String(err) };
+    } finally {
+      state.setupModelSaving = false;
+      requestHostUpdate?.();
+    }
+  };
+  const renderSetupWizardSection = () =>
+    renderSetupWizard({
+      connected: state.connected,
+      busy: state.setupWizardBusy,
+      sessionId: state.setupWizardSessionId,
+      status: state.setupWizardStatus,
+      error: state.setupWizardError,
+      step: state.setupWizardStep,
+      config: state.configForm ?? state.configSnapshot?.config ?? null,
+      channelsSnapshot: state.channelsSnapshot,
+      modelAuthStatus: state.modelAuthStatusResult,
+      configReady: Boolean(state.configForm || state.configSnapshot?.hash),
+      setupModelProviderId: state.setupModelProviderId,
+      setupModelPlanId: state.setupModelPlanId,
+      setupModelApiKey: state.setupModelApiKey,
+      setupModelSaving: state.setupModelSaving,
+      setupModelMessage: state.setupModelMessage,
+      onSetupModelProviderChange: (providerId) => {
+        state.setupModelProviderId = providerId;
+        state.setupModelPlanId = getDefaultQuickModelPlanId(providerId);
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelPlanChange: (planId) => {
+        state.setupModelPlanId = planId;
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelApiKeyChange: (apiKey) => {
+        state.setupModelApiKey = apiKey;
+        state.setupModelMessage = null;
+        requestHostUpdate?.();
+      },
+      onSetupModelApply: () => {
+        void applyQuickModelSetup();
+      },
+      onStart: (mode) => {
+        void startSetupWizard(state, mode).then((ok) => {
+          if (ok) {
+            refreshAfterSetupWizard();
+            return;
+          }
+          requestHostUpdate?.();
+        });
+      },
+      onSubmit: (value) => {
+        void submitSetupWizardAnswer(state, value).then((ok) => {
+          if (ok) {
+            refreshAfterSetupWizard();
+            return;
+          }
+          requestHostUpdate?.();
+        });
+      },
+      onCancel: () => {
+        void cancelSetupWizard(state).finally(() => requestHostUpdate?.());
+      },
+      onRefresh: () => {
+        state.setTab("setupWizard");
+      },
+    });
   const renderConfigTabForActiveTab = () => {
     switch (state.tab) {
       case "config": {
@@ -1056,8 +1768,9 @@ export function renderApp(state: AppViewState) {
             fastMode,
             onModelChange: () => {
               state.configSettingsMode = "advanced";
-              state.tab = "aiAgents" as import("./navigation.ts").Tab;
               state.aiAgentsActiveSection = "models";
+              state.aiAgentsActiveSubsection = null;
+              state.setTab(resolveNavigationMode(state) === "oui" ? "modelManager" : "aiAgents");
               requestHostUpdate?.();
             },
             onThinkingChange: (level) => {
@@ -1295,6 +2008,12 @@ export function renderApp(state: AppViewState) {
           navRootLabel: "AI & Agents",
           includeSections: [...AI_AGENTS_SECTION_KEYS],
         });
+      case "setupWizard":
+        return renderSetupWizardSection();
+      case "modelManager":
+        return renderModelManagerSection();
+      case "agentManager":
+        return renderAgentManagerSection();
       default:
         return nothing;
     }
@@ -1368,7 +2087,7 @@ export function renderApp(state: AppViewState) {
         state.setTab(tab as import("./navigation.ts").Tab);
       },
       onSlashCommand: (cmd) => {
-        state.setTab("chat" as import("./navigation.ts").Tab);
+        state.setTab(resolveNavigationMode(state) === "oui" ? "ouiChat" : "chat");
         state.handleChatDraftChange(cmd.endsWith(" ") ? cmd : `${cmd} `);
       },
     })}
@@ -1410,6 +2129,9 @@ export function renderApp(state: AppViewState) {
               .basePath=${state.basePath}
               .agentLabel=${dashboardHeaderContext.agentLabel}
               @navigate=${(event: CustomEvent<Tab>) => {
+                if (resolveNavigationMode(state) === "oui" && !isOuiTab(event.detail)) {
+                  state.applySettings({ ...state.settings, navigationMode: "original" });
+                }
                 state.setTab(event.detail);
               }}
             ></dashboard-header>
@@ -1443,8 +2165,8 @@ export function renderApp(state: AppViewState) {
                   : html`
                       <img
                         class="sidebar-brand__logo"
-                        src="${agentLogoUrl(basePath)}"
-                        alt="OpenClaw"
+                        src="${brandLogoSrc}"
+                        alt=${isOuiNavigationMode ? "OUI" : "OpenClaw"}
                       />
                       <span class="sidebar-brand__copy">
                         <span class="sidebar-brand__eyebrow">${t("nav.control")}</span>
@@ -1468,44 +2190,12 @@ export function renderApp(state: AppViewState) {
                 >
               </button>
             </div>
+            ${renderNavigationModeSwitch(state, navCollapsed)}
             <div class="sidebar-shell__body">
               <nav class="sidebar-nav">
-                ${TAB_GROUPS.map((group) => {
-                  const isGroupCollapsed = state.settings.navGroupsCollapsed[group.label] ?? false;
-                  const hasActiveTab = group.tabs.some((tab) => tab === state.tab);
-                  const showItems = navCollapsed || hasActiveTab || !isGroupCollapsed;
-
-                  return html`
-                    <section class="nav-section ${!showItems ? "nav-section--collapsed" : ""}">
-                      ${!navCollapsed
-                        ? html`
-                            <button
-                              class="nav-section__label"
-                              @click=${() => {
-                                const next = { ...state.settings.navGroupsCollapsed };
-                                next[group.label] = !isGroupCollapsed;
-                                state.applySettings({
-                                  ...state.settings,
-                                  navGroupsCollapsed: next,
-                                });
-                              }}
-                              aria-expanded=${showItems}
-                            >
-                              <span class="nav-section__label-text"
-                                >${t(`nav.${group.label}`)}</span
-                              >
-                              <span class="nav-section__chevron"> ${icons.chevronDown} </span>
-                            </button>
-                          `
-                        : nothing}
-                      <div class="nav-section__items">
-                        ${group.tabs.map((tab) =>
-                          renderTab(state, tab, { collapsed: navCollapsed }),
-                        )}
-                      </div>
-                    </section>
-                  `;
-                })}
+                ${resolveNavigationMode(state) === "oui"
+                  ? renderOuiNavigation(state, navCollapsed)
+                  : renderOriginalNavigation(state, navCollapsed)}
               </nav>
             </div>
             <div class="sidebar-shell__footer">
@@ -1591,7 +2281,9 @@ export function renderApp(state: AppViewState) {
             >
               <div>
                 ${isChat
-                  ? renderChatSessionSelect(state)
+                  ? state.tab === "ouiChat"
+                    ? nothing
+                    : renderChatSessionSelect(state)
                   : html`<div class="page-title">${titleForTab(state.tab)}</div>`}
                 ${isChat ? nothing : html`<div class="page-sub">${subtitleForTab(state.tab)}</div>`}
               </div>
@@ -1629,6 +2321,30 @@ export function renderApp(state: AppViewState) {
                 ${isChat ? renderChatControls(state) : nothing}
               </div>
             </section>`}
+        ${state.tab === "ouiOverview"
+          ? renderOuiOverview({
+              connected: state.connected,
+              hello: state.hello,
+              gatewayUrl: state.settings.gatewayUrl,
+              hasToken: Boolean(state.settings.token.trim()),
+              lastError: state.lastError,
+              tokenBusy: state.ouiOverviewTokenBusy,
+              tokenMessage: state.ouiOverviewTokenMessage,
+              usageDaily: state.usageCostSummary?.daily ?? [],
+              usageTotals: state.usageCostSummary?.totals ?? state.usageResult?.totals ?? null,
+              usageError: state.usageError,
+              usageLoading: state.usageLoading,
+              usageDailyChartMode: state.usageDailyChartMode,
+              onGetToken: () => handleOuiOverviewGetToken(state, requestHostUpdate),
+              onConnect: () => state.connect(),
+              onRefresh: () =>
+                state.connected ? state.loadOverview({ refresh: true }) : state.connect(),
+              onUsageRefresh: () => loadUsage(state),
+              onUsageDailyChartModeChange: (mode) => {
+                state.usageDailyChartMode = mode;
+              },
+            })
+          : nothing}
         ${state.tab === "overview"
           ? renderOverview({
               connected: state.connected,
@@ -2411,18 +3127,22 @@ export function renderApp(state: AppViewState) {
               }),
             )
           : nothing}
-        ${state.tab === "chat"
+        ${isChatTab(state.tab)
           ? renderMeasured(
               state,
-              "chat",
+              state.tab === "ouiChat" ? "ouiChat" : "chat",
               {
                 messageCount: state.chatMessages.length,
                 toolMessageCount: state.chatToolMessages.length,
                 streamSegmentCount: state.chatStreamSegments.length,
                 queueCount: state.chatQueue.length,
               },
-              () =>
-                renderChat({
+              () => {
+                if (state.chatParallelMode) {
+                  return renderParallelChat(state);
+                }
+                const renderActiveChat = state.tab === "ouiChat" ? renderOuiChat : renderChat;
+                return renderActiveChat({
                   sessionKey: state.sessionKey,
                   onSessionKeyChange: (next) => {
                     switchChatSession(state, next);
@@ -2458,7 +3178,7 @@ export function renderApp(state: AppViewState) {
                   onRefresh: () => {
                     state.chatSideResult = null;
                     state.resetToolStream();
-                    return refreshChat(state, { awaitHistory: true, scheduleScroll: false });
+                    return refreshChat(state, { scheduleScroll: false });
                   },
                   onToggleFocusMode: () => {
                     if (state.onboarding) {
@@ -2519,7 +3239,7 @@ export function renderApp(state: AppViewState) {
                   },
                   onNavigateToAgent: () => {
                     state.agentsSelectedId = resolvedAgentId;
-                    state.setTab("agents" as import("./navigation.ts").Tab);
+                    state.setTab(state.tab === "ouiChat" ? "agentManager" : "agents");
                   },
                   onSessionSelect: (key: string) => {
                     switchChatSession(state, key);
@@ -2543,8 +3263,11 @@ export function renderApp(state: AppViewState) {
                   embedSandboxMode: state.embedSandboxMode,
                   allowExternalEmbedUrls: state.allowExternalEmbedUrls,
                   assistantAttachmentAuthToken: resolveAssistantAttachmentAuthToken(state),
+                  topChrome:
+                    state.tab === "ouiChat" ? renderOuiMainChatWindowHeader(state) : nothing,
                   basePath: state.basePath ?? "",
-                }),
+                });
+              },
             )
           : nothing}
         ${renderConfigTabForActiveTab()}

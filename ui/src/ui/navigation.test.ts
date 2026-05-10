@@ -12,35 +12,23 @@ import {
   type Tab,
 } from "./navigation.ts";
 
-/** All valid tab identifiers derived from TAB_GROUPS */
-const ALL_TABS: Tab[] = TAB_GROUPS.flatMap((group) => group.tabs) as Tab[];
-
-const nonEmptyTabMetadataCases = [
-  { name: "iconForTab", resolve: iconForTab },
-  { name: "titleForTab", resolve: titleForTab },
-];
-
-const leadingSlashNormalizerCases = [
-  { name: "normalizeBasePath", normalize: normalizeBasePath, input: "ui", expected: "/ui" },
-  { name: "normalizePath", normalize: normalizePath, input: "chat", expected: "/chat" },
-];
-
-describe("tab metadata string helpers", () => {
-  it.each(nonEmptyTabMetadataCases)(
-    "$name returns a non-empty string for every tab",
-    ({ resolve }) => {
-      for (const tab of ALL_TABS) {
-        const value = resolve(tab);
-        expect(typeof value).toBe("string");
-        expect(value.length).toBeGreaterThan(0);
-      }
-    },
-  );
-});
+const OUI_TABS: Tab[] = ["ouiOverview", "ouiChat", "setupWizard", "modelManager", "agentManager"];
+const ALL_TABS: Tab[] = [...(TAB_GROUPS.flatMap((group) => group.tabs) as Tab[]), ...OUI_TABS];
 
 describe("iconForTab", () => {
+  it("returns a non-empty string for every tab", () => {
+    for (const tab of ALL_TABS) {
+      const icon = iconForTab(tab);
+      expect(icon).toBeTruthy();
+      expect(typeof icon).toBe("string");
+      expect(icon.length).toBeGreaterThan(0);
+    }
+  });
+
   it("returns stable icons for known tabs", () => {
     expect(iconForTab("chat")).toBe("messageSquare");
+    expect(iconForTab("ouiOverview")).toBe("barChart");
+    expect(iconForTab("ouiChat")).toBe("messageSquare");
     expect(iconForTab("overview")).toBe("barChart");
     expect(iconForTab("channels")).toBe("link");
     expect(iconForTab("instances")).toBe("radio");
@@ -49,6 +37,9 @@ describe("iconForTab", () => {
     expect(iconForTab("skills")).toBe("zap");
     expect(iconForTab("nodes")).toBe("monitor");
     expect(iconForTab("config")).toBe("settings");
+    expect(iconForTab("setupWizard")).toBe("spark");
+    expect(iconForTab("modelManager")).toBe("brain");
+    expect(iconForTab("agentManager")).toBe("folder");
     expect(iconForTab("debug")).toBe("bug");
     expect(iconForTab("logs")).toBe("scrollText");
   });
@@ -61,10 +52,23 @@ describe("iconForTab", () => {
 });
 
 describe("titleForTab", () => {
+  it("returns a non-empty string for every tab", () => {
+    for (const tab of ALL_TABS) {
+      const title = titleForTab(tab);
+      expect(title).toBeTruthy();
+      expect(typeof title).toBe("string");
+    }
+  });
+
   it("returns expected titles", () => {
     expect(titleForTab("chat")).toBe("Chat");
+    expect(titleForTab("ouiOverview")).toBe("Overview");
+    expect(titleForTab("ouiChat")).toBe("Chat");
     expect(titleForTab("overview")).toBe("Overview");
     expect(titleForTab("cron")).toBe("Cron Jobs");
+    expect(titleForTab("setupWizard")).toBe("Setup Wizard");
+    expect(titleForTab("modelManager")).toBe("Model Manager");
+    expect(titleForTab("agentManager")).toBe("Agent Manager");
   });
 });
 
@@ -78,22 +82,22 @@ describe("subtitleForTab", () => {
 
   it("returns descriptive subtitles", () => {
     expect(subtitleForTab("chat")).toContain("quick interventions");
+    expect(subtitleForTab("ouiOverview")).toContain("Gateway status");
+    expect(subtitleForTab("ouiChat")).toContain("quick interventions");
     expect(subtitleForTab("config")).toContain("openclaw.json");
+    expect(subtitleForTab("setupWizard")).toContain("model plans");
+    expect(subtitleForTab("modelManager")).toContain("configured models");
+    expect(subtitleForTab("agentManager")).toContain("configured agents");
   });
-});
-
-describe("leading slash path normalizers", () => {
-  it.each(leadingSlashNormalizerCases)(
-    "$name adds leading slash if missing",
-    ({ expected, input, normalize }) => {
-      expect(normalize(input)).toBe(expected);
-    },
-  );
 });
 
 describe("normalizeBasePath", () => {
   it("returns empty string for falsy input", () => {
     expect(normalizeBasePath("")).toBe("");
+  });
+
+  it("adds leading slash if missing", () => {
+    expect(normalizeBasePath("ui")).toBe("/ui");
   });
 
   it("removes trailing slash", () => {
@@ -114,6 +118,10 @@ describe("normalizePath", () => {
     expect(normalizePath("")).toBe("/");
   });
 
+  it("adds leading slash if missing", () => {
+    expect(normalizePath("chat")).toBe("/chat");
+  });
+
   it("removes trailing slash except for root", () => {
     expect(normalizePath("/chat/")).toBe("/chat");
     expect(normalizePath("/")).toBe("/");
@@ -123,7 +131,12 @@ describe("normalizePath", () => {
 describe("pathForTab", () => {
   it("returns correct path without base", () => {
     expect(pathForTab("chat")).toBe("/chat");
+    expect(pathForTab("ouiOverview")).toBe("/oui/overview");
+    expect(pathForTab("ouiChat")).toBe("/oui/chat");
     expect(pathForTab("overview")).toBe("/overview");
+    expect(pathForTab("setupWizard")).toBe("/oui/setup");
+    expect(pathForTab("modelManager")).toBe("/oui/models");
+    expect(pathForTab("agentManager")).toBe("/oui/agents");
   });
 
   it("prepends base path", () => {
@@ -135,18 +148,31 @@ describe("pathForTab", () => {
 describe("tabFromPath", () => {
   it("returns tab for valid path", () => {
     expect(tabFromPath("/chat")).toBe("chat");
+    expect(tabFromPath("/oui")).toBe("ouiOverview");
+    expect(tabFromPath("/oui/overview")).toBe("ouiOverview");
+    expect(tabFromPath("/oui/chat")).toBe("ouiChat");
     expect(tabFromPath("/overview")).toBe("overview");
     expect(tabFromPath("/sessions")).toBe("sessions");
     expect(tabFromPath("/dreaming")).toBe("dreams");
     expect(tabFromPath("/dreams")).toBe("dreams");
+    expect(tabFromPath("/oui-chat")).toBe("ouiChat");
+    expect(tabFromPath("/oui/setup")).toBe("setupWizard");
+    expect(tabFromPath("/setup")).toBe("setupWizard");
+    expect(tabFromPath("/onboard")).toBe("setupWizard");
+    expect(tabFromPath("/oui/models")).toBe("modelManager");
+    expect(tabFromPath("/models")).toBe("modelManager");
+    expect(tabFromPath("/oui/agents")).toBe("agentManager");
+    expect(tabFromPath("/agent-manager")).toBe("agentManager");
   });
 
-  it("returns chat for root path", () => {
-    expect(tabFromPath("/")).toBe("chat");
+  it("returns OUI overview for root path", () => {
+    expect(tabFromPath("/")).toBe("ouiOverview");
   });
 
   it("handles base paths", () => {
     expect(tabFromPath("/ui/chat", "/ui")).toBe("chat");
+    expect(tabFromPath("/ui/oui/overview", "/ui")).toBe("ouiOverview");
+    expect(tabFromPath("/ui/oui/chat", "/ui")).toBe("ouiChat");
     expect(tabFromPath("/apps/openclaw/sessions", "/apps/openclaw")).toBe("sessions");
   });
 
@@ -167,6 +193,8 @@ describe("inferBasePathFromPathname", () => {
 
   it("returns empty string for direct tab path", () => {
     expect(inferBasePathFromPathname("/chat")).toBe("");
+    expect(inferBasePathFromPathname("/oui/overview")).toBe("");
+    expect(inferBasePathFromPathname("/oui/chat")).toBe("");
     expect(inferBasePathFromPathname("/overview")).toBe("");
     expect(inferBasePathFromPathname("/dreaming")).toBe("");
     expect(inferBasePathFromPathname("/dreams")).toBe("");

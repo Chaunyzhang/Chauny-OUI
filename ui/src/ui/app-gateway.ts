@@ -45,7 +45,6 @@ import {
   removeExecApproval,
 } from "./controllers/exec-approval.ts";
 import { loadHealthState, type HealthState } from "./controllers/health.ts";
-import { loadNodes, type NodesState } from "./controllers/nodes.ts";
 import {
   applySessionsChangedEvent,
   loadSessions,
@@ -58,7 +57,7 @@ import {
   type GatewayHelloOk,
 } from "./gateway.ts";
 import { GatewayBrowserClient } from "./gateway.ts";
-import type { Tab } from "./navigation.ts";
+import { isChatTab, type Tab } from "./navigation.ts";
 import { buildAgentMainSessionKey, normalizeAgentId, parseAgentSessionKey } from "./session-key.ts";
 import type { UiSettings } from "./storage.ts";
 import type {
@@ -110,6 +109,9 @@ type GatewayHost = {
   execApprovalError: string | null;
   updateAvailable: UpdateAvailable | null;
   reconcileWebPushState?: () => Promise<void> | void;
+  handleParallelAgentEvent?: (payload: AgentEventPayload | undefined) => void;
+  handleParallelChatEvent?: (payload: ChatEventPayload | undefined) => void;
+  handleParallelSessionMessageEvent?: (payload: { sessionKey?: string } | undefined) => void;
 };
 
 type GatewayHostWithDeferredSessionMessageReload = GatewayHost & {
@@ -539,12 +541,13 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
       }
       void subscribeSessions(host as unknown as SessionsState);
       void loadAssistantIdentity(host as unknown as AssistantIdentityState);
-      if (host.tab !== "chat") {
+      if (!isChatTab(host.tab)) {
         void refreshChatAvatar(host as unknown as Parameters<typeof refreshChatAvatar>[0]);
       }
       void loadHealthState(host as unknown as HealthState);
-      void loadNodes(host as unknown as NodesState, { quiet: true });
-      void loadDevices(host as unknown as DevicesState, { quiet: true });
+      if (host.tab === "nodes") {
+        void loadDevices(host as unknown as DevicesState, { quiet: true });
+      }
       void loadAgentsThenRefreshActiveTab(host);
       // Re-run push reconciliation now that the gateway client is available.
       void host.reconcileWebPushState?.();
@@ -670,6 +673,7 @@ function isEventForDifferentActiveRun(
 }
 
 function handleChatGatewayEvent(host: GatewayHost, payload: ChatEventPayload | undefined) {
+  host.handleParallelChatEvent?.(payload);
   if (payload?.sessionKey) {
     setLastActiveSessionKey(
       host as unknown as Parameters<typeof setLastActiveSessionKey>[0],
@@ -725,7 +729,11 @@ function handleSessionMessageGatewayEvent(
   host: GatewayHost,
   payload: { sessionKey?: string } | undefined,
 ) {
+  host.handleParallelSessionMessageEvent?.(payload);
   applySessionsChangedEvent(host as unknown as SessionsState, payload);
+  if (!isChatTab(host.tab)) {
+    return;
+  }
   const deferredReloadHost = host as GatewayHostWithDeferredSessionMessageReload;
   const sessionKey = payload?.sessionKey?.trim();
   if (!sessionKey || sessionKey !== host.sessionKey) {
@@ -761,6 +769,7 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
       host as unknown as Parameters<typeof handleAgentEvent>[0],
       evt.payload as AgentEventPayload | undefined,
     );
+    host.handleParallelAgentEvent?.(evt.payload as AgentEventPayload | undefined);
     return;
   }
 
@@ -816,7 +825,9 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
     if (result.applied || isChatTurnSessionChangedPayload(evt.payload)) {
       return;
     }
-    void loadSessions(host as unknown as SessionsState);
+    if (host.tab === "sessions") {
+      void loadSessions(host as unknown as SessionsState);
+    }
     return;
   }
 
@@ -825,7 +836,9 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
   }
 
   if (evt.event === "device.pair.requested" || evt.event === "device.pair.resolved") {
-    void loadDevices(host as unknown as DevicesState, { quiet: true });
+    if (host.tab === "nodes") {
+      void loadDevices(host as unknown as DevicesState, { quiet: true });
+    }
   }
 
   if (evt.event === "exec.approval.requested") {

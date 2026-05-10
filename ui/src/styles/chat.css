@@ -3,3 +3,488 @@
 @import "./chat/grouped.css";
 @import "./chat/tool-cards.css";
 @import "./chat/sidebar.css";
+
+.oui-chat-controls {
+  display: grid;
+  grid-template-columns:
+    minmax(112px, 0.72fr) minmax(148px, 1fr) minmax(170px, 1fr)
+    minmax(138px, 0.84fr) minmax(128px, 0.78fr);
+  gap: 10px;
+  align-items: stretch;
+  width: min(100%, 1120px);
+}
+
+.oui-chat-control {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.oui-chat-control__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.oui-chat-control__title {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oui-chat-control__detail {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oui-chat-control .oui-select__button {
+  min-height: 44px;
+  border-color: color-mix(in srgb, var(--border) 86%, transparent);
+  background: var(--bg-elevated);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--card-highlight) 78%, transparent);
+}
+
+.oui-chat-control .oui-select__button:hover {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+  background: var(--bg-hover);
+}
+
+.oui-chat-control .oui-select__menu {
+  z-index: 120;
+  min-width: max(100%, 220px);
+  background: var(--popover, var(--bg-elevated));
+}
+
+.oui-chat-control--session .oui-select__menu,
+.oui-chat-control--model .oui-select__menu {
+  min-width: max(100%, 280px);
+}
+
+.oui-chat-controls--flash .oui-chat-control--session .oui-select__button {
+  animation: oui-chat-session-flash 0.2s ease-out;
+}
+
+.oui-chat-controls--saving .oui-chat-control--oms .oui-select__button {
+  opacity: 0.72;
+}
+
+.chat-controls-dropdown .oui-chat-controls {
+  width: 100%;
+}
+
+.oui-chat-controls--compact {
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  width: min(100%, 470px);
+  align-items: end;
+}
+
+.oui-chat-settings {
+  position: relative;
+  align-self: end;
+  min-width: 0;
+}
+
+.oui-chat-settings > summary {
+  list-style: none;
+}
+
+.oui-chat-settings > summary::-webkit-details-marker {
+  display: none;
+}
+
+.oui-chat-settings > summary::marker {
+  content: "";
+}
+
+.oui-chat-settings__button {
+  width: 44px;
+  height: 44px;
+}
+
+.oui-chat-settings--top {
+  align-self: center;
+}
+
+.oui-chat-settings--top .oui-chat-settings__button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+}
+
+.oui-chat-settings--window {
+  align-self: center;
+  justify-self: end;
+}
+
+.oui-chat-settings--window .oui-chat-settings__button {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+}
+
+.oui-chat-window-header {
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) minmax(260px, auto) 36px;
+  gap: 10px;
+  align-items: center;
+  flex: 0 0 auto;
+  min-width: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+}
+
+.oui-chat-window-header__identity {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 10px;
+}
+
+.oui-chat-window-header__avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-hover);
+}
+
+.oui-chat-window-header__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.oui-chat-window-header__avatar-text {
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.oui-chat-window-header__name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oui-chat-window-header__controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(128px, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.oui-chat-window-select,
+.oui-chat-window-select .oui-select__button {
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+}
+
+.oui-chat-window-select .oui-select__button {
+  min-height: 36px;
+  padding: 0 32px 0 10px;
+  border-color: color-mix(in srgb, var(--border) 86%, transparent);
+  background: var(--bg-elevated);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--card-highlight) 78%, transparent);
+}
+
+.oui-chat-window-select .oui-select__button:hover {
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+  background: var(--bg-hover);
+}
+
+.oui-chat-window-select .oui-select__menu {
+  z-index: 130;
+  min-width: max(100%, 180px);
+  background: var(--popover, var(--bg-elevated));
+}
+
+.oui-chat-settings__toggle--danger {
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--border));
+  background: color-mix(in srgb, var(--danger) 8%, var(--card));
+  color: var(--danger);
+}
+
+.oui-chat-settings__action-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: currentColor;
+}
+
+.oui-chat-settings__action-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.oui-chat-settings__popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 160;
+  width: min(460px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--popover, var(--bg-elevated));
+  box-shadow: 0 18px 48px color-mix(in srgb, #000 42%, transparent);
+}
+
+.oui-chat-settings__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.oui-chat-settings__grid .oui-chat-control {
+  min-width: 0;
+}
+
+.oui-chat-settings__toggles {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.oui-chat-settings__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.oui-chat-settings__toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.oui-chat-settings__toggle--active {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--card));
+}
+
+.oui-chat-settings__switch {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.oui-chat-settings__switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--muted);
+  transition:
+    transform 0.16s ease,
+    background 0.16s ease;
+}
+
+.oui-chat-settings__toggle--active .oui-chat-settings__switch {
+  background: var(--accent);
+}
+
+.oui-chat-settings__toggle--active .oui-chat-settings__switch::after {
+  transform: translateX(14px);
+  background: #fff;
+}
+
+.parallel-chat {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 12px;
+  flex: 1 1 0;
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.parallel-chat__pane {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 calc((100% - 12px) / 2);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+}
+
+.parallel-chat .oui-chat-window-header {
+  grid-template-columns: minmax(120px, 0.72fr) minmax(220px, 1fr) 36px;
+  padding: 8px 10px;
+}
+
+.parallel-chat .oui-chat-window-header__avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.parallel-chat .oui-chat-window-header__name {
+  font-size: 14px;
+}
+
+.parallel-chat__pane-body {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.parallel-chat .chat {
+  height: 100%;
+}
+
+.parallel-chat .chat-thread {
+  padding: 0 6px 4px;
+}
+
+.parallel-chat .agent-chat__welcome {
+  width: 100%;
+  gap: 8px;
+  padding: 16px 12px;
+}
+
+.parallel-chat .agent-chat__welcome h2 {
+  font-size: 16px;
+}
+
+.parallel-chat .agent-chat__hint,
+.parallel-chat .agent-chat__suggestions {
+  display: none;
+}
+
+.parallel-chat .agent-chat__avatar--logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.parallel-chat .agent-chat__input {
+  margin: 0 8px 8px;
+  border-radius: 8px;
+}
+
+.parallel-chat .agent-chat__composer-combobox > textarea {
+  min-height: 36px;
+  max-height: 96px;
+  padding: 9px 10px 6px;
+  font-size: 13px;
+}
+
+.parallel-chat .agent-chat__toolbar {
+  min-height: 40px;
+  padding: 4px 8px;
+}
+
+@keyframes oui-chat-session-flash {
+  0% {
+    border-color: color-mix(in srgb, var(--accent) 72%, var(--border));
+    background: color-mix(in srgb, var(--accent-subtle) 62%, var(--bg-elevated));
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  }
+  100% {
+    border-color: color-mix(in srgb, var(--border) 86%, transparent);
+    background: var(--bg-elevated);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--card-highlight) 78%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oui-chat-controls--flash .oui-chat-control--session .oui-select__button {
+    animation: none;
+    border-color: color-mix(in srgb, var(--accent) 70%, var(--border));
+    box-shadow: var(--focus-ring);
+  }
+}
+
+@media (max-width: 1220px) {
+  .oui-chat-controls {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 820px) {
+  .oui-chat-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .oui-chat-controls--compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .parallel-chat {
+    flex-wrap: nowrap;
+    flex-direction: column;
+  }
+
+  .parallel-chat__pane {
+    flex-basis: 100%;
+    min-height: 420px;
+  }
+
+  .oui-chat-window-header,
+  .parallel-chat .oui-chat-window-header {
+    grid-template-columns: minmax(0, 1fr) 36px;
+  }
+
+  .oui-chat-window-header__controls {
+    grid-column: 1 / -1;
+  }
+
+  .oui-chat-settings__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .oui-chat-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oui-chat-controls--compact {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

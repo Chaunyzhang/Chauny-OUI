@@ -3,6 +3,7 @@ import {
   agentLogoUrl,
   assistantAvatarFallbackUrl,
   buildAgentContext,
+  ouiLogoUrl,
   resolveConfiguredCronModelSuggestions,
   resolveAgentAvatarUrl,
   resolveAssistantTextAvatar,
@@ -111,15 +112,26 @@ describe("agentLogoUrl", () => {
     expect(agentLogoUrl("/apps/openclaw/")).toBe("/apps/openclaw/favicon.svg");
   });
 
-  it("uses a route-relative fallback before basePath bootstrap finishes", () => {
-    expect(agentLogoUrl("")).toBe("favicon.svg");
+  it("uses a root-relative fallback before basePath bootstrap finishes", () => {
+    expect(agentLogoUrl("")).toBe("/favicon.svg");
+  });
+});
+
+describe("ouiLogoUrl", () => {
+  it("keeps base-mounted OUI logo paths absolute to the mount", () => {
+    expect(ouiLogoUrl("/ui")).toBe("/ui/oui-icon.png?v=lobster-left-bottom");
+    expect(ouiLogoUrl("/apps/openclaw/")).toBe("/apps/openclaw/oui-icon.png?v=lobster-left-bottom");
+  });
+
+  it("uses a root-relative fallback before basePath bootstrap finishes", () => {
+    expect(ouiLogoUrl("")).toBe("/oui-icon.png?v=lobster-left-bottom");
   });
 });
 
 describe("assistantAvatarFallbackUrl", () => {
   it("uses the bundled Molty png for assistant profile fallbacks", () => {
     expect(assistantAvatarFallbackUrl("/ui")).toBe("/ui/apple-touch-icon.png");
-    expect(assistantAvatarFallbackUrl("")).toBe("apple-touch-icon.png");
+    expect(assistantAvatarFallbackUrl("")).toBe("/apple-touch-icon.png");
   });
 });
 

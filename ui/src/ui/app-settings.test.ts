@@ -27,8 +27,13 @@ type Tab =
   | "automation"
   | "infrastructure"
   | "aiAgents"
+  | "ouiChat"
+  | "setupWizard"
+  | "modelManager"
+  | "agentManager"
   | "debug"
-  | "logs";
+  | "logs"
+  | "dreams";
 
 type SettingsHost = {
   settings: {
@@ -36,6 +41,7 @@ type SettingsHost = {
     token: string;
     sessionKey: string;
     lastActiveSessionKey: string;
+    navigationMode: "oui" | "original";
     theme: ThemeName;
     themeMode: ThemeMode;
     chatFocusMode: boolean;
@@ -134,6 +140,7 @@ const createHost = (tab: Tab): SettingsHost => ({
     token: "",
     sessionKey: "main",
     lastActiveSessionKey: "main",
+    navigationMode: "original",
     theme: "claw",
     themeMode: "system",
     chatFocusMode: false,
@@ -252,26 +259,45 @@ describe("setTabFromRoute", () => {
     vi.unstubAllGlobals();
   });
 
-  it("starts and stops log polling based on the tab", () => {
+  it("does not start log polling when entering the logs tab", () => {
     const host = createHost("chat");
 
     setTabFromRoute(host, "logs");
+    expect(host.logsPollInterval).toBeNull();
     expect(host.debugPollInterval).toBeNull();
-    expect(host.logsPollInterval).not.toBe(host.debugPollInterval);
 
     setTabFromRoute(host, "chat");
     expect(host.logsPollInterval).toBeNull();
   });
 
-  it("starts and stops debug polling based on the tab", () => {
+  it("does not start debug polling when entering the debug tab", () => {
     const host = createHost("chat");
 
     setTabFromRoute(host, "debug");
+    expect(host.debugPollInterval).toBeNull();
     expect(host.logsPollInterval).toBeNull();
-    expect(host.debugPollInterval).not.toBe(host.logsPollInterval);
 
     setTabFromRoute(host, "chat");
     expect(host.debugPollInterval).toBeNull();
+  });
+
+  it("keeps OUI routes in OUI mode and original routes in original mode", () => {
+    const host = createHost("chat");
+
+    setTabFromRoute(host, "ouiChat");
+    expect(host.settings.navigationMode).toBe("oui");
+
+    setTabFromRoute(host, "setupWizard");
+    expect(host.settings.navigationMode).toBe("oui");
+
+    setTabFromRoute(host, "modelManager");
+    expect(host.settings.navigationMode).toBe("oui");
+
+    setTabFromRoute(host, "agentManager");
+    expect(host.settings.navigationMode).toBe("oui");
+
+    setTabFromRoute(host, "aiAgents");
+    expect(host.settings.navigationMode).toBe("original");
   });
 
   it("re-resolves the active palette when only themeMode changes", () => {

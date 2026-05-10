@@ -38,7 +38,6 @@ import {
   handleFirstUpdated,
   handleUpdated,
 } from "./app-lifecycle.ts";
-import { initNativeBridge } from "./app-native-bridge.ts";
 import { createChatSession as createChatSessionInternal } from "./app-render.helpers.ts";
 import { renderApp } from "./app-render.ts";
 import {
@@ -67,6 +66,15 @@ import {
 import type { AppViewState } from "./app-view-state.ts";
 import { normalizeAssistantIdentity } from "./assistant-identity.ts";
 import { exportChatMarkdown } from "./chat/export.ts";
+import {
+  ensureParallelChatPanes as ensureParallelChatPanesInternal,
+  handleParallelAgentEvent as handleParallelAgentEventInternal,
+  handleParallelChatEvent as handleParallelChatEventInternal,
+  handleParallelSessionMessageEvent as handleParallelSessionMessageEventInternal,
+  refreshParallelChatPanes as refreshParallelChatPanesInternal,
+  type ParallelChatHost,
+  type ParallelChatPane,
+} from "./chat/parallel-chat.ts";
 import { RealtimeTalkSession, type RealtimeTalkStatus } from "./chat/realtime-talk.ts";
 import type { ChatSideResult } from "./chat/side-result.ts";
 import {
@@ -89,7 +97,7 @@ import type {
 } from "./controllers/skills.ts";
 import { importCustomThemeFromUrl } from "./custom-theme.ts";
 import type { GatewayBrowserClient, GatewayHelloOk } from "./gateway.ts";
-import type { Tab } from "./navigation.ts";
+import { isChatTab, type Tab } from "./navigation.ts";
 import { resolveAgentIdFromSessionKey } from "./session-key.ts";
 import type { SidebarContent } from "./sidebar-content.ts";
 import { loadLocalUserIdentity, loadSettings, type UiSettings } from "./storage.ts";
@@ -118,6 +126,8 @@ import type {
   NostrProfile,
   ToolsCatalogResult,
   ToolsEffectiveResult,
+  WizardRunStatus,
+  WizardStep,
 } from "./types.ts";
 import { type ChatAttachment, type ChatQueueItem, type CronFormState } from "./ui-types.ts";
 import { generateUUID } from "./uuid.ts";
@@ -216,7 +226,6 @@ export class OpenClawApp extends LitElement {
   @state() chatAvatarReason: string | null = null;
   @state() chatThinkingLevel: string | null = null;
   @state() chatModelOverrides: Record<string, ChatModelOverride | null> = {};
-  @state() chatModelSwitchPromises: Record<string, Promise<boolean>> = {};
   @state() chatModelsLoading = false;
   @state() chatModelCatalog: ModelCatalogEntry[] = [];
   @state() sessionSwitchNotice: { id: number; text: string } | null = null;
@@ -232,10 +241,11 @@ export class OpenClawApp extends LitElement {
   @state() realtimeTalkDetail: string | null = null;
   @state() realtimeTalkTranscript: string | null = null;
   private realtimeTalkSession: RealtimeTalkSession | null = null;
-  private nativeBridgeCleanup: (() => void) | null = null;
   @state() chatManualRefreshInFlight = false;
   @state() chatHeaderControlsHidden = false;
   @state() chatMobileControlsOpen = false;
+  @state() chatParallelMode = this.settings.chatParallelMode ?? false;
+  @state() chatParallelPanes: ParallelChatPane[] = [];
   private chatMobileControlsTrigger: HTMLElement | null = null;
   @state() navDrawerOpen = false;
 
@@ -335,6 +345,22 @@ export class OpenClawApp extends LitElement {
   @state() aiAgentsSearchQuery = "";
   @state() aiAgentsActiveSection: string | null = null;
   @state() aiAgentsActiveSubsection: string | null = null;
+  @state() setupWizardBusy = false;
+  @state() setupWizardSessionId: string | null = null;
+  @state() setupWizardStep: WizardStep | null = null;
+  @state() setupWizardStatus: WizardRunStatus | "idle" = "idle";
+  @state() setupWizardError: string | null = null;
+  @state() setupModelProviderId = "minimax";
+  @state() setupModelPlanId = "minimax-cn-api";
+  @state() setupModelApiKey = "";
+  @state() setupModelSaving = false;
+  @state() setupModelMessage: { kind: "success" | "error"; text: string } | null = null;
+  @state() setupAgentName = "";
+  @state() setupAgentWorkspace = "";
+  @state() setupAgentModel = "";
+  @state() setupAgentEmoji = "";
+  @state() setupAgentSaving = false;
+  @state() setupAgentMessage: { kind: "success" | "error"; text: string } | null = null;
 
   @state() channelsLoading = false;
   @state() channelsSnapshot: ChannelsStatusSnapshot | null = null;
@@ -511,6 +537,8 @@ export class OpenClawApp extends LitElement {
   @state() overviewShowGatewayPassword = false;
   @state() overviewLogLines: string[] = [];
   @state() overviewLogCursor = 0;
+  @state() ouiOverviewTokenBusy = false;
+  @state() ouiOverviewTokenMessage: { kind: "success" | "error"; text: string } | null = null;
 
   @state() skillsLoading = false;
   @state() skillsReport: SkillStatusReport | null = null;
@@ -649,7 +677,6 @@ export class OpenClawApp extends LitElement {
     document.addEventListener("keydown", this.chatMobileControlsKeydownHandler);
     document.addEventListener("pointerdown", this.chatMobileControlsPointerdownHandler);
     handleConnected(this as unknown as Parameters<typeof handleConnected>[0]);
-    this.nativeBridgeCleanup = initNativeBridge(this);
     void this.initWebPushState();
   }
 
@@ -659,8 +686,6 @@ export class OpenClawApp extends LitElement {
 
   disconnectedCallback() {
     document.removeEventListener("keydown", this.globalKeydownHandler);
-    this.nativeBridgeCleanup?.();
-    this.nativeBridgeCleanup = null;
     document.removeEventListener("keydown", this.chatMobileControlsKeydownHandler);
     document.removeEventListener("pointerdown", this.chatMobileControlsPointerdownHandler);
     if (this.sessionSwitchNoticeTimer !== null) {
@@ -679,8 +704,17 @@ export class OpenClawApp extends LitElement {
   protected updated(changed: Map<PropertyKey, unknown>) {
     handleUpdated(this as unknown as Parameters<typeof handleUpdated>[0], changed);
     // Some render callbacks assign tab directly while preparing nested panel state.
-    if (changed.has("tab") && this.tab !== "chat" && this.chatMobileControlsOpen) {
+    if (changed.has("tab") && !isChatTab(this.tab) && this.chatMobileControlsOpen) {
       this.setChatMobileControlsOpen(false);
+    }
+    if (
+      this.chatParallelMode &&
+      (changed.has("agentsList") || changed.has("connected") || changed.has("client"))
+    ) {
+      this.ensureParallelChatPanes();
+      if (this.connected) {
+        void this.refreshParallelChatPanes();
+      }
     }
     if (!changed.has("sessionKey") || this.agentsPanel !== "tools") {
       return;
@@ -756,7 +790,7 @@ export class OpenClawApp extends LitElement {
 
   setTab(next: Tab) {
     setTabInternal(this as unknown as Parameters<typeof setTabInternal>[0], next);
-    if (next !== "chat") {
+    if (!isChatTab(next)) {
       this.setChatMobileControlsOpen(false);
     }
     this.navDrawerOpen = false;
@@ -783,6 +817,39 @@ export class OpenClawApp extends LitElement {
         focusTarget.focus();
       }
     });
+  }
+
+  setChatParallelMode(open: boolean) {
+    if (this.chatParallelMode === open) {
+      return;
+    }
+    this.chatParallelMode = open;
+    this.applySettings({ ...this.settings, chatParallelMode: open });
+    if (!open) {
+      return;
+    }
+    this.ensureParallelChatPanes();
+    void this.refreshParallelChatPanes();
+  }
+
+  ensureParallelChatPanes() {
+    ensureParallelChatPanesInternal(this as unknown as ParallelChatHost);
+  }
+
+  async refreshParallelChatPanes() {
+    await refreshParallelChatPanesInternal(this as unknown as ParallelChatHost);
+  }
+
+  handleParallelChatEvent(payload: import("./controllers/chat.ts").ChatEventPayload | undefined) {
+    handleParallelChatEventInternal(this as unknown as ParallelChatHost, payload);
+  }
+
+  handleParallelAgentEvent(payload: import("./app-tool-stream.ts").AgentEventPayload | undefined) {
+    handleParallelAgentEventInternal(this as unknown as ParallelChatHost, payload);
+  }
+
+  handleParallelSessionMessageEvent(payload: { sessionKey?: string } | undefined) {
+    handleParallelSessionMessageEventInternal(this as unknown as ParallelChatHost, payload);
   }
 
   setTheme(next: ThemeName, context?: Parameters<typeof setThemeInternal>[2]) {

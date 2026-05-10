@@ -2,6 +2,7 @@ import type { ChatSendOptions } from "./app-chat.ts";
 import type { EventLogEntry } from "./app-events.ts";
 import type { CompactionStatus, FallbackStatus } from "./app-tool-stream.ts";
 import type { ChatInputHistoryKeyInput, ChatInputHistoryKeyResult } from "./chat/input-history.ts";
+import type { ParallelChatPane } from "./chat/parallel-chat.ts";
 import type { RealtimeTalkStatus } from "./chat/realtime-talk.ts";
 import type { ChatSideResult } from "./chat/side-result.ts";
 import type { CronModelSuggestionsState, CronState } from "./controllers/cron.ts";
@@ -34,6 +35,8 @@ import type {
   ChatModelOverride,
   ModelAuthStatusResult,
   ModelCatalogEntry,
+  WizardRunStatus,
+  WizardStep,
   NostrProfile,
   PresenceEntry,
   SessionsUsageResult,
@@ -106,7 +109,6 @@ export type AppViewState = {
   chatAvatarReason?: string | null;
   chatThinkingLevel: string | null;
   chatModelOverrides: Record<string, ChatModelOverride | null>;
-  chatModelSwitchPromises: Record<string, Promise<boolean>>;
   chatModelsLoading: boolean;
   chatModelCatalog: ModelCatalogEntry[];
   sessionSwitchNotice: { id: number; text: string } | null;
@@ -126,6 +128,9 @@ export type AppViewState = {
   chatManualRefreshInFlight: boolean;
   chatHeaderControlsHidden: boolean;
   chatMobileControlsOpen: boolean;
+  chatParallelMode: boolean;
+  chatParallelPanes: ParallelChatPane[];
+  requestUpdate?: () => void;
   nodesLoading: boolean;
   nodes: Array<Record<string, unknown>>;
   chatNewMessagesBelow: boolean;
@@ -213,6 +218,22 @@ export type AppViewState = {
   aiAgentsSearchQuery: string;
   aiAgentsActiveSection: string | null;
   aiAgentsActiveSubsection: string | null;
+  setupWizardBusy: boolean;
+  setupWizardSessionId: string | null;
+  setupWizardStep: WizardStep | null;
+  setupWizardStatus: WizardRunStatus | "idle";
+  setupWizardError: string | null;
+  setupModelProviderId: string;
+  setupModelPlanId: string;
+  setupModelApiKey: string;
+  setupModelSaving: boolean;
+  setupModelMessage: { kind: "success" | "error"; text: string } | null;
+  setupAgentName: string;
+  setupAgentWorkspace: string;
+  setupAgentModel: string;
+  setupAgentEmoji: string;
+  setupAgentSaving: boolean;
+  setupAgentMessage: { kind: "success" | "error"; text: string } | null;
   channelsLoading: boolean;
   channelsSnapshot: ChannelsStatusSnapshot | null;
   channelsError: string | null;
@@ -412,6 +433,8 @@ export type AppViewState = {
     overviewShowGatewayPassword: boolean;
     overviewLogLines: string[];
     overviewLogCursor: number;
+    ouiOverviewTokenBusy: boolean;
+    ouiOverviewTokenMessage: { kind: "success" | "error"; text: string } | null;
     client: GatewayBrowserClient | null;
     refreshSessionsAfterChat: Set<string>;
     connect: () => void;
@@ -420,6 +443,8 @@ export type AppViewState = {
       open: boolean,
       options?: { trigger?: HTMLElement | null; restoreFocus?: boolean },
     ) => void;
+    setChatParallelMode: (open: boolean) => void;
+    refreshParallelChatPanes: () => Promise<void>;
     setTheme: (theme: ThemeName, context?: ThemeTransitionContext) => void;
     setThemeMode: (mode: ThemeMode, context?: ThemeTransitionContext) => void;
     setCustomThemeImportUrl: (next: string) => void;

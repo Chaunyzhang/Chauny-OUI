@@ -15,10 +15,14 @@ type ScopedSessionSelection = {
   lastActiveSessionKey: string;
 };
 
-type PersistedUiSettings = Omit<UiSettings, "token" | "sessionKey" | "lastActiveSessionKey"> & {
+type PersistedUiSettings = Omit<
+  UiSettings,
+  "token" | "sessionKey" | "lastActiveSessionKey" | "chatParallelMode"
+> & {
   token?: never;
   sessionKey?: string;
   lastActiveSessionKey?: string;
+  chatParallelMode?: boolean;
   sessionsByGateway?: Record<string, ScopedSessionSelection>;
 };
 
@@ -55,9 +59,11 @@ export type UiSettings = {
   token: string;
   sessionKey: string;
   lastActiveSessionKey: string;
+  navigationMode?: UiNavigationMode;
   theme: ThemeName;
   themeMode: ThemeMode;
   chatFocusMode: boolean;
+  chatParallelMode?: boolean;
   chatShowThinking: boolean;
   chatShowToolCalls: boolean;
   splitRatio: number; // Sidebar split ratio (0.4 to 0.7, default 0.6)
@@ -69,6 +75,7 @@ export type UiSettings = {
   locale?: string;
 };
 
+export type UiNavigationMode = "oui" | "original";
 export type { LocalUserIdentity } from "./user-identity.ts";
 
 function isViteDevPage(): boolean {
@@ -187,6 +194,10 @@ function persistSessionToken(gatewayUrl: string, token: string) {
   }
 }
 
+function parseNavigationMode(value: unknown): UiNavigationMode {
+  return value === "oui" || value === "original" ? value : "oui";
+}
+
 export function loadSettings(): UiSettings {
   const { pageUrl: pageDerivedUrl, effectiveUrl: defaultUrl } = deriveDefaultGatewayUrl();
   const storage = getSafeLocalStorage();
@@ -196,9 +207,11 @@ export function loadSettings(): UiSettings {
     token: loadSessionToken(defaultUrl),
     sessionKey: "main",
     lastActiveSessionKey: "main",
+    navigationMode: "oui",
     theme: "claw",
     themeMode: "system",
     chatFocusMode: false,
+    chatParallelMode: false,
     chatShowThinking: true,
     chatShowToolCalls: true,
     splitRatio: 0.6,
@@ -233,10 +246,15 @@ export function loadSettings(): UiSettings {
       token: loadSessionToken(gatewayUrl),
       sessionKey: scopedSessionSelection.sessionKey,
       lastActiveSessionKey: scopedSessionSelection.lastActiveSessionKey,
+      navigationMode: parseNavigationMode((parsed as { navigationMode?: unknown }).navigationMode),
       theme: theme === "custom" && !customTheme ? "claw" : theme,
       themeMode: mode,
       chatFocusMode:
         typeof parsed.chatFocusMode === "boolean" ? parsed.chatFocusMode : defaults.chatFocusMode,
+      chatParallelMode:
+        typeof parsed.chatParallelMode === "boolean"
+          ? parsed.chatParallelMode
+          : defaults.chatParallelMode,
       chatShowThinking:
         typeof parsed.chatShowThinking === "boolean"
           ? parsed.chatShowThinking
@@ -376,6 +394,7 @@ function persistSettings(next: UiSettings) {
   );
   const persisted: PersistedUiSettings = {
     gatewayUrl: next.gatewayUrl,
+    navigationMode: next.navigationMode ?? "oui",
     theme: next.theme,
     themeMode: next.themeMode,
     chatFocusMode: next.chatFocusMode,

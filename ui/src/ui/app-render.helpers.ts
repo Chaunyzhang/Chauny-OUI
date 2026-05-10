@@ -1,21 +1,32 @@
 import { html, nothing } from "lit";
 import { t } from "../i18n/index.ts";
+import { isZhCnConfigCopy } from "../i18n/lib/config-copy.ts";
 import { refreshChat, refreshChatAvatar } from "./app-chat.ts";
 import { syncUrlWithSessionKey } from "./app-settings.ts";
 import type { AppViewState } from "./app-view-state.ts";
+import { resolveChatModelSelectState } from "./chat-model-select-state.ts";
 import {
   isCronSessionKey,
   parseSessionKey,
   renderChatSessionSelect as renderChatSessionSelectBase,
+  resolveChatAgentFilterId,
+  resolveChatAgentFilterOptions,
   resolveSessionDisplayName,
   resolveSessionOptionGroups,
+  resolveChatThinkingSelectState,
+  resolvePreferredSessionForAgent,
+  switchChatModel,
+  switchChatThinkingLevel,
 } from "./chat/session-controls.ts";
+import "./components/oui-select.ts";
 import { refreshSlashCommands } from "./chat/slash-commands.ts";
+import type { OuiSelectElement, OuiSelectOption } from "./components/oui-select.ts";
 import { resolveControlUiAuthToken } from "./control-ui-auth.ts";
 import { ChatState, loadChatHistory } from "./controllers/chat.ts";
+import { loadConfig, saveConfig, stageConfigPreset } from "./controllers/config.ts";
 import { createSessionAndRefresh, loadSessions } from "./controllers/sessions.ts";
 import { icons } from "./icons.ts";
-import { iconForTab, pathForTab, titleForTab, type Tab } from "./navigation.ts";
+import { iconForTab, isChatTab, pathForTab, titleForTab, type Tab } from "./navigation.ts";
 import {
   normalizeAgentId,
   parseAgentSessionKey,
@@ -192,12 +203,12 @@ export function renderTab(state: AppViewState, tab: Tab, opts?: { collapsed?: bo
           return;
         }
         event.preventDefault();
-        if (tab === "chat") {
+        if (isChatTab(tab)) {
           if (!state.sessionKey) {
             const mainSessionKey = resolveSidebarChatSessionKey(state);
             resetChatStateForSessionSwitch(state, mainSessionKey);
           }
-          if (state.tab !== "chat") {
+          if (!isChatTab(state.tab)) {
             void state.loadAssistantIdentity();
           }
         }
@@ -253,7 +264,648 @@ export function renderChatSessionSelect(state: AppViewState) {
   return renderChatSessionSelectBase(state, switchChatSession);
 }
 
-export function renderChatControls(state: AppViewState) {
+const OUI_OMS_MODES = ["off", "auto", "low", "medium", "high", "xhigh"] as const;
+type OuiOmsMode = (typeof OUI_OMS_MODES)[number];
+
+type OuiChatSelectConfig = {
+  className: string;
+  title: string;
+  detail: string;
+  ariaLabel: string;
+  value: string;
+  options: OuiSelectOption[];
+  disabled?: boolean;
+  dataset: string;
+  titleValue?: string;
+  onChange: (value: string) => void | Promise<void>;
+};
+
+type OuiChatWindowSelectConfig = {
+  className: string;
+  ariaLabel: string;
+  value: string;
+  options: OuiSelectOption[];
+  disabled?: boolean;
+  dataset: string;
+  titleValue?: string;
+  onChange: (value: string) => void | Promise<void>;
+};
+
+function ouiChatCopy(en: string, zh: string) {
+  return isZhCnConfigCopy() ? zh : en;
+}
+
+function normalizeOuiOmsMode(value: unknown): OuiOmsMode {
+  return OUI_OMS_MODES.includes(value as OuiOmsMode) ? (value as OuiOmsMode) : "auto";
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function resolveCurrentConfig(state: AppViewState): Record<string, unknown> | null {
+  return (
+    state.configForm ?? (asRecord(state.configSnapshot?.config) as Record<string, unknown> | null)
+  );
+}
+
+function resolveOmsEntry(config: Record<string, unknown> | null): Record<string, unknown> | null {
+  const plugins = asRecord(config?.plugins);
+  const entries = asRecord(plugins?.entries);
+  return asRecord(entries?.oms);
+}
+
+function isOmsEnabled(config: Record<string, unknown> | null): boolean {
+  const entry = resolveOmsEntry(config);
+  if (!entry || entry.enabled === false) {
+    return false;
+  }
+  const plugins = asRecord(config?.plugins);
+  const slots = asRecord(plugins?.slots);
+  return slots?.memory === "oms" || entry.enabled === true;
+}
+
+function resolveOmsMode(state: AppViewState): OuiOmsMode {
+  const entry = resolveOmsEntry(resolveCurrentConfig(state));
+  const pluginConfig = asRecord(entry?.config);
+  return normalizeOuiOmsMode(pluginConfig?.mode);
+}
+
+function localizeOuiSelectOptionLabel(label: string) {
+  if (!isZhCnConfigCopy()) {
+    return label;
+  }
+  const defaultMatch = label.match(/^Default \((.+)\)$/);
+  if (defaultMatch) {
+    return `默认：${defaultMatch[1]}`;
+  }
+  const inheritedMatch = label.match(/^Inherited:\s*(.+)$/);
+  if (inheritedMatch) {
+    return `继承：${inheritedMatch[1]}`;
+  }
+  const overrideMatch = label.match(/^Override:\s*(.+)$/);
+  if (overrideMatch) {
+    return overrideMatch[1] ?? label;
+  }
+  return label === "Default model" ? "默认模型" : label === "Off" ? "关闭" : label;
+}
+
+function getOuiSelectValue(event: Event): string {
+  return String((event.currentTarget as OuiSelectElement).value ?? "").trim();
+}
+
+function renderOuiChatSelect(config: OuiChatSelectConfig) {
+  return html`
+    <label class="oui-chat-control ${config.className}">
+      <span class="oui-chat-control__meta">
+        <span class="oui-chat-control__title">${config.title}</span>
+        <span class="oui-chat-control__detail">${config.detail}</span>
+      </span>
+      <oui-select
+        class="oui-chat-control__select"
+        data-chat-control=${config.dataset}
+        .value=${config.value}
+        .options=${config.options}
+        ?disabled=${config.disabled}
+        aria-label=${config.ariaLabel}
+        title=${config.titleValue ?? ""}
+        @change=${(event: Event) => config.onChange(getOuiSelectValue(event))}
+      ></oui-select>
+    </label>
+  `;
+}
+
+export function renderOuiChatWindowSelect(config: OuiChatWindowSelectConfig) {
+  return html`
+    <oui-select
+      class="oui-chat-window-select ${config.className}"
+      data-chat-window-control=${config.dataset}
+      .value=${config.value}
+      .options=${config.options}
+      ?disabled=${config.disabled}
+      aria-label=${config.ariaLabel}
+      title=${config.titleValue ?? ""}
+      @change=${(event: Event) => config.onChange(getOuiSelectValue(event))}
+    ></oui-select>
+  `;
+}
+
+async function switchOuiOmsMode(state: AppViewState, nextMode: string) {
+  const mode = normalizeOuiOmsMode(nextMode);
+  if (!state.client || !state.connected || !isOmsEnabled(resolveCurrentConfig(state))) {
+    return;
+  }
+  if (mode === resolveOmsMode(state)) {
+    return;
+  }
+  state.lastError = null;
+  if (!state.configForm && !state.configSnapshot?.hash) {
+    await loadConfig(state, { discardPendingChanges: true });
+  }
+  stageConfigPreset(state, {
+    plugins: {
+      entries: {
+        oms: {
+          config: {
+            mode,
+          },
+        },
+      },
+    },
+  });
+  const ok = await saveConfig(state);
+  if (!ok) {
+    state.lastError =
+      state.lastError ??
+      ouiChatCopy("Failed to save OMS retrieval mode.", "保存 OMS 检索强度失败。");
+  }
+}
+
+export function renderOuiChatSessionSelect(state: AppViewState) {
+  const sessionGroups = resolveSessionOptionGroups(state, state.sessionKey, state.sessionsResult);
+  const agentOptions = resolveChatAgentFilterOptions(state);
+  const activeAgentId = resolveChatAgentFilterId(state, state.sessionKey);
+  const sessionOptions = sessionGroups.flatMap((group) =>
+    group.options.map((entry) => ({
+      value: entry.key,
+      label: entry.label,
+    })),
+  );
+  const selectedSessionLabel =
+    sessionGroups.flatMap((group) => group.options).find((entry) => entry.key === state.sessionKey)
+      ?.label ?? state.sessionKey;
+  const {
+    currentOverride,
+    defaultLabel,
+    options: modelOptionsRaw,
+  } = resolveChatModelSelectState(state);
+  const {
+    currentOverride: thinkingOverride,
+    defaultLabel: thinkingDefaultLabel,
+    options: thinkingOptionsRaw,
+  } = resolveChatThinkingSelectState(state);
+  const busy =
+    state.chatLoading || state.chatSending || Boolean(state.chatRunId) || state.chatStream !== null;
+  const modelDisabled =
+    !state.connected ||
+    busy ||
+    (state.chatModelsLoading && modelOptionsRaw.length === 0) ||
+    !state.client;
+  const thinkingDisabled = !state.connected || busy || !state.client;
+  const config = resolveCurrentConfig(state);
+  const omsEnabled = isOmsEnabled(config);
+  const omsMode = resolveOmsMode(state);
+  const flashSession = state.sessionSwitchFlashKey === state.sessionKey;
+  const rowClass = [
+    "oui-chat-controls",
+    flashSession ? "oui-chat-controls--flash" : "",
+    state.configSaving ? "oui-chat-controls--saving" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const modelOptions = [
+    { value: "", label: localizeOuiSelectOptionLabel(defaultLabel) },
+    ...modelOptionsRaw.map((entry) => ({
+      value: entry.value,
+      label: localizeOuiSelectOptionLabel(entry.label),
+    })),
+  ];
+  const thinkingOptions = [
+    { value: "", label: localizeOuiSelectOptionLabel(thinkingDefaultLabel) },
+    ...thinkingOptionsRaw.map((entry) => ({
+      value: entry.value,
+      label: localizeOuiSelectOptionLabel(entry.label),
+    })),
+  ];
+  const omsOptions = OUI_OMS_MODES.map((mode) => ({
+    value: mode,
+    label:
+      {
+        off: ouiChatCopy("Off", "关闭"),
+        auto: ouiChatCopy("Auto", "自动"),
+        low: ouiChatCopy("Light", "轻量"),
+        medium: ouiChatCopy("Standard", "标准"),
+        high: ouiChatCopy("Strong", "加强"),
+        xhigh: ouiChatCopy("Deep", "深度"),
+      }[mode] ?? mode,
+  }));
+  return html`
+    <div class=${rowClass}>
+      ${renderOuiChatSelect({
+        className: "oui-chat-control--agent",
+        title: "Agent",
+        detail: ouiChatCopy("Assistant", "助手身份"),
+        ariaLabel: ouiChatCopy("Agent", "Agent"),
+        value: activeAgentId,
+        options:
+          agentOptions.length > 0
+            ? agentOptions.map((entry) => ({ value: entry.id, label: entry.label }))
+            : [{ value: activeAgentId, label: activeAgentId }],
+        disabled: !state.connected || agentOptions.length <= 1,
+        dataset: "agent",
+        titleValue:
+          agentOptions.find((entry) => entry.id === activeAgentId)?.label ?? activeAgentId,
+        onChange: (nextAgentId) =>
+          switchChatSession(state, resolvePreferredSessionForAgent(state, nextAgentId)),
+      })}
+      ${renderOuiChatSelect({
+        className: "oui-chat-control--session",
+        title: "Session",
+        detail: ouiChatCopy("Context", "当前话题"),
+        ariaLabel: ouiChatCopy("Session", "Session"),
+        value: state.sessionKey,
+        options:
+          sessionOptions.length > 0
+            ? sessionOptions
+            : [{ value: state.sessionKey, label: state.sessionKey }],
+        disabled: !state.connected || sessionOptions.length === 0,
+        dataset: "session",
+        titleValue: selectedSessionLabel,
+        onChange: (next) => {
+          if (state.sessionKey !== next) {
+            switchChatSession(state, next);
+          }
+        },
+      })}
+      ${renderOuiChatSelect({
+        className: "oui-chat-control--model",
+        title: "Model",
+        detail: ouiChatCopy("Answer engine", "回答引擎"),
+        ariaLabel: ouiChatCopy("Model", "模型"),
+        value: currentOverride,
+        options: modelOptions,
+        disabled: modelDisabled,
+        dataset: "model",
+        titleValue:
+          modelOptions.find((entry) => entry.value === currentOverride)?.label ?? currentOverride,
+        onChange: (next) => switchChatModel(state, next),
+      })}
+      ${renderOuiChatSelect({
+        className: "oui-chat-control--thinking",
+        title: "Thinking",
+        detail: ouiChatCopy("Reasoning", "推理深度"),
+        ariaLabel: ouiChatCopy("Thinking", "推理深度"),
+        value: thinkingOverride,
+        options: thinkingOptions,
+        disabled: thinkingDisabled,
+        dataset: "thinking",
+        titleValue:
+          thinkingOptions.find((entry) => entry.value === thinkingOverride)?.label ??
+          thinkingOverride,
+        onChange: (next) => switchChatThinkingLevel(state, next),
+      })}
+      ${renderOuiChatSelect({
+        className: "oui-chat-control--oms",
+        title: "OMS",
+        detail: ouiChatCopy("Memory search", "记忆检索"),
+        ariaLabel: ouiChatCopy("OMS retrieval strength", "OMS 检索强度"),
+        value: omsMode,
+        options: omsOptions,
+        disabled: !state.connected || !state.client || !omsEnabled || state.configSaving,
+        dataset: "oms",
+        titleValue: omsMode,
+        onChange: (next) => switchOuiOmsMode(state, next),
+      })}
+    </div>
+    <div class="chat-controls__session-notice" role="status" aria-live="polite">
+      ${state.sessionSwitchNotice?.text ?? ""}
+    </div>
+  `;
+}
+
+export function renderOuiChatSessionSelectCompact(state: AppViewState) {
+  const agentOptions = resolveChatAgentFilterOptions(state);
+  const activeAgentId = resolveChatAgentFilterId(state, state.sessionKey);
+  const {
+    currentOverride: thinkingOverride,
+    defaultLabel: thinkingDefaultLabel,
+    options: thinkingOptionsRaw,
+  } = resolveChatThinkingSelectState(state);
+  const busy =
+    state.chatLoading || state.chatSending || Boolean(state.chatRunId) || state.chatStream !== null;
+  const thinkingDisabled = !state.connected || busy || !state.client;
+  const thinkingOptions = [
+    { value: "", label: localizeOuiSelectOptionLabel(thinkingDefaultLabel) },
+    ...thinkingOptionsRaw.map((entry) => ({
+      value: entry.value,
+      label: localizeOuiSelectOptionLabel(entry.label),
+    })),
+  ];
+
+  return html`
+    <div class="oui-chat-controls oui-chat-controls--compact">
+      ${renderOuiChatSelect({
+        className: "oui-chat-control--agent",
+        title: "Agent",
+        detail: ouiChatCopy("Assistant", "助手身份"),
+        ariaLabel: "Agent",
+        value: activeAgentId,
+        options:
+          agentOptions.length > 0
+            ? agentOptions.map((entry) => ({ value: entry.id, label: entry.label }))
+            : [{ value: activeAgentId, label: activeAgentId }],
+        disabled: !state.connected || agentOptions.length <= 1,
+        dataset: "agent",
+        titleValue:
+          agentOptions.find((entry) => entry.id === activeAgentId)?.label ?? activeAgentId,
+        onChange: (nextAgentId) =>
+          switchChatSession(state, resolvePreferredSessionForAgent(state, nextAgentId)),
+      })}
+      ${renderOuiChatSelect({
+        className: "oui-chat-control--thinking",
+        title: "Thinking",
+        detail: ouiChatCopy("Reasoning", "推理深度"),
+        ariaLabel: "Thinking",
+        value: thinkingOverride,
+        options: thinkingOptions,
+        disabled: thinkingDisabled,
+        dataset: "thinking",
+        titleValue:
+          thinkingOptions.find((entry) => entry.value === thinkingOverride)?.label ??
+          thinkingOverride,
+        onChange: (next) => switchChatThinkingLevel(state, next),
+      })}
+    </div>
+    <div class="chat-controls__session-notice" role="status" aria-live="polite">
+      ${state.sessionSwitchNotice?.text ?? ""}
+    </div>
+  `;
+}
+
+export function renderOuiChatSettingsButton(state: AppViewState) {
+  const sessionGroups = resolveSessionOptionGroups(state, state.sessionKey, state.sessionsResult);
+  const agentOptions = resolveChatAgentFilterOptions(state);
+  const activeAgentId = resolveChatAgentFilterId(state, state.sessionKey);
+  const sessionOptions = sessionGroups.flatMap((group) =>
+    group.options.map((entry) => ({ value: entry.key, label: entry.label })),
+  );
+  const selectedSessionLabel =
+    sessionGroups.flatMap((group) => group.options).find((entry) => entry.key === state.sessionKey)
+      ?.label ?? state.sessionKey;
+  const {
+    currentOverride,
+    defaultLabel,
+    options: modelOptionsRaw,
+  } = resolveChatModelSelectState(state);
+  const busy =
+    state.chatLoading || state.chatSending || Boolean(state.chatRunId) || state.chatStream !== null;
+  const modelDisabled =
+    !state.connected ||
+    busy ||
+    (state.chatModelsLoading && modelOptionsRaw.length === 0) ||
+    !state.client;
+  const config = resolveCurrentConfig(state);
+  const omsEnabled = isOmsEnabled(config);
+  const omsMode = resolveOmsMode(state);
+  const hideCron = state.sessionsHideCron ?? true;
+  const showThinking = state.onboarding ? false : state.settings.chatShowThinking;
+  const showToolCalls = state.onboarding ? true : state.settings.chatShowToolCalls;
+  const disableDisplayToggles = state.onboarding;
+  const settingsLabel = ouiChatCopy("Chat settings", "聊天设置");
+  const modelOptions = [
+    { value: "", label: localizeOuiSelectOptionLabel(defaultLabel) },
+    ...modelOptionsRaw.map((entry) => ({
+      value: entry.value,
+      label: localizeOuiSelectOptionLabel(entry.label),
+    })),
+  ];
+  const omsOptions = OUI_OMS_MODES.map((mode) => ({
+    value: mode,
+    label:
+      {
+        off: ouiChatCopy("Off", "关闭"),
+        auto: ouiChatCopy("Auto", "自动"),
+        low: ouiChatCopy("Light", "轻量"),
+        medium: ouiChatCopy("Standard", "标准"),
+        high: ouiChatCopy("Strong", "加强"),
+        xhigh: ouiChatCopy("Deep", "深度"),
+      }[mode] ?? mode,
+  }));
+
+  return html`
+    <details class="oui-chat-settings oui-chat-settings--top">
+      <summary
+        class="btn btn--sm btn--icon oui-chat-settings__button"
+        title=${settingsLabel}
+        aria-label=${settingsLabel}
+        data-tooltip=${settingsLabel}
+      >
+        ${icons.settings}
+      </summary>
+      <div class="oui-chat-settings__popover">
+        <div class="oui-chat-settings__grid">
+          ${renderOuiChatSelect({
+            className: "oui-chat-control--agent",
+            title: "Agent",
+            detail: ouiChatCopy("Assistant", "助手身份"),
+            ariaLabel: "Agent",
+            value: activeAgentId,
+            options:
+              agentOptions.length > 0
+                ? agentOptions.map((entry) => ({ value: entry.id, label: entry.label }))
+                : [{ value: activeAgentId, label: activeAgentId }],
+            disabled: !state.connected || agentOptions.length <= 1,
+            dataset: "agent",
+            titleValue:
+              agentOptions.find((entry) => entry.id === activeAgentId)?.label ?? activeAgentId,
+            onChange: (nextAgentId) =>
+              switchChatSession(state, resolvePreferredSessionForAgent(state, nextAgentId)),
+          })}
+          ${renderOuiChatSelect({
+            className: "oui-chat-control--session",
+            title: "Session",
+            detail: ouiChatCopy("Context", "当前话题"),
+            ariaLabel: "Session",
+            value: state.sessionKey,
+            options:
+              sessionOptions.length > 0
+                ? sessionOptions
+                : [{ value: state.sessionKey, label: state.sessionKey }],
+            disabled: !state.connected || sessionOptions.length === 0,
+            dataset: "session",
+            titleValue: selectedSessionLabel,
+            onChange: (next) => {
+              if (state.sessionKey !== next) {
+                switchChatSession(state, next);
+              }
+            },
+          })}
+          ${renderOuiChatSelect({
+            className: "oui-chat-control--model",
+            title: "Model",
+            detail: ouiChatCopy("Answer engine", "回答引擎"),
+            ariaLabel: "Model",
+            value: currentOverride,
+            options: modelOptions,
+            disabled: modelDisabled,
+            dataset: "model",
+            titleValue:
+              modelOptions.find((entry) => entry.value === currentOverride)?.label ??
+              currentOverride,
+            onChange: (next) => switchChatModel(state, next),
+          })}
+          ${renderOuiChatSelect({
+            className: "oui-chat-control--oms",
+            title: "OMS",
+            detail: ouiChatCopy("Memory search", "记忆检索"),
+            ariaLabel: "OMS retrieval strength",
+            value: omsMode,
+            options: omsOptions,
+            disabled: !state.connected || !state.client || !omsEnabled || state.configSaving,
+            dataset: "oms",
+            titleValue: omsMode,
+            onChange: (next) => switchOuiOmsMode(state, next),
+          })}
+        </div>
+        <div class="oui-chat-settings__toggles">
+          <button
+            class="oui-chat-settings__toggle ${showThinking
+              ? "oui-chat-settings__toggle--active"
+              : ""}"
+            ?disabled=${disableDisplayToggles}
+            @click=${() => {
+              if (!disableDisplayToggles) {
+                state.applySettings({
+                  ...state.settings,
+                  chatShowThinking: !state.settings.chatShowThinking,
+                });
+              }
+            }}
+          >
+            <span>${ouiChatCopy("Show thinking", "显示推理")}</span>
+            <span class="oui-chat-settings__switch"></span>
+          </button>
+          <button
+            class="oui-chat-settings__toggle ${showToolCalls
+              ? "oui-chat-settings__toggle--active"
+              : ""}"
+            ?disabled=${disableDisplayToggles}
+            @click=${() => {
+              if (!disableDisplayToggles) {
+                state.applySettings({
+                  ...state.settings,
+                  chatShowToolCalls: !state.settings.chatShowToolCalls,
+                });
+              }
+            }}
+          >
+            <span>${ouiChatCopy("Show tools", "显示工具")}</span>
+            <span class="oui-chat-settings__switch"></span>
+          </button>
+          <button
+            class="oui-chat-settings__toggle ${hideCron ? "oui-chat-settings__toggle--active" : ""}"
+            @click=${() => {
+              state.sessionsHideCron = !hideCron;
+            }}
+          >
+            <span>${ouiChatCopy("Hide cron sessions", "隐藏定时任务")}</span>
+            <span class="oui-chat-settings__switch"></span>
+          </button>
+        </div>
+      </div>
+    </details>
+  `;
+}
+
+function renderOuiAgentAvatar(avatarUrl: string | null | undefined, label: string) {
+  const fallback = label.trim().slice(0, 1).toUpperCase() || "A";
+  return html`
+    <span class="oui-chat-window-header__avatar" aria-hidden="true">
+      ${avatarUrl
+        ? html`<img src=${avatarUrl} alt="" />`
+        : html`<span class="oui-chat-window-header__avatar-text">${fallback}</span>`}
+    </span>
+  `;
+}
+
+function buildOuiOmsOptions(): OuiSelectOption[] {
+  return OUI_OMS_MODES.map((mode) => ({
+    value: mode,
+    label:
+      {
+        off: ouiChatCopy("Off", "关闭"),
+        auto: ouiChatCopy("Auto", "自动"),
+        low: ouiChatCopy("Light", "轻量"),
+        medium: ouiChatCopy("Standard", "标准"),
+        high: ouiChatCopy("Strong", "加强"),
+        xhigh: ouiChatCopy("Deep", "深度"),
+      }[mode] ?? mode,
+  }));
+}
+
+export function renderOuiOmsWindowSelect(state: AppViewState) {
+  const config = resolveCurrentConfig(state);
+  const omsEnabled = isOmsEnabled(config);
+  const omsMode = resolveOmsMode(state);
+  const omsOptions = buildOuiOmsOptions();
+  return renderOuiChatWindowSelect({
+    className: "oui-chat-window-select--oms",
+    ariaLabel: ouiChatCopy("OMS retrieval strength", "OMS 检索强度"),
+    value: omsMode,
+    options: omsOptions,
+    disabled: !state.connected || !state.client || !omsEnabled || state.configSaving,
+    dataset: "oms",
+    titleValue: omsOptions.find((entry) => entry.value === omsMode)?.label ?? omsMode,
+    onChange: (next) => switchOuiOmsMode(state, next),
+  });
+}
+
+export function renderOuiMainChatWindowHeader(state: AppViewState) {
+  const agentOptions = resolveChatAgentFilterOptions(state);
+  const activeAgentId = resolveChatAgentFilterId(state, state.sessionKey);
+  const normalizedActiveAgentId = normalizeAgentId(activeAgentId);
+  const activeAgent = state.agentsList?.agents.find(
+    (entry) => normalizeAgentId(entry.id) === normalizedActiveAgentId,
+  );
+  const agentLabel =
+    normalizeOptionalString(activeAgent?.name) ??
+    normalizeOptionalString(state.assistantName) ??
+    agentOptions.find((entry) => entry.id === activeAgentId)?.label ??
+    activeAgentId;
+  const {
+    currentOverride: thinkingOverride,
+    defaultLabel: thinkingDefaultLabel,
+    options: thinkingOptionsRaw,
+  } = resolveChatThinkingSelectState(state);
+  const busy =
+    state.chatLoading || state.chatSending || Boolean(state.chatRunId) || state.chatStream !== null;
+  const thinkingOptions = [
+    { value: "", label: localizeOuiSelectOptionLabel(thinkingDefaultLabel) },
+    ...thinkingOptionsRaw.map((entry) => ({
+      value: entry.value,
+      label: localizeOuiSelectOptionLabel(entry.label),
+    })),
+  ];
+
+  return html`
+    <div class="oui-chat-window-header">
+      <div class="oui-chat-window-header__identity">
+        ${renderOuiAgentAvatar(state.chatAvatarUrl ?? state.assistantAvatar, agentLabel)}
+        <span class="oui-chat-window-header__name" title=${agentLabel}>${agentLabel}</span>
+      </div>
+      <div class="oui-chat-window-header__controls">
+        ${renderOuiChatWindowSelect({
+          className: "oui-chat-window-select--thinking",
+          ariaLabel: ouiChatCopy("Thinking strength", "思考强度"),
+          value: thinkingOverride,
+          options: thinkingOptions,
+          disabled: !state.connected || busy || !state.client,
+          dataset: "thinking",
+          titleValue:
+            thinkingOptions.find((entry) => entry.value === thinkingOverride)?.label ??
+            thinkingOverride,
+          onChange: (next) => switchChatThinkingLevel(state, next),
+        })}
+        ${renderOuiOmsWindowSelect(state)}
+      </div>
+      ${renderOuiChatSettingsButton(state)}
+    </div>
+  `;
+}
+
+function renderOriginalChatControls(state: AppViewState) {
   const hideCron = state.sessionsHideCron ?? true;
   const hiddenCronCount = hideCron ? countHiddenCronSessions(state, state.sessionsResult) : 0;
   const disableThinkingToggle = state.onboarding;
@@ -415,6 +1067,121 @@ export function renderChatControls(state: AppViewState) {
   `;
 }
 
+export function renderChatControls(state: AppViewState) {
+  if (state.tab !== "ouiChat") {
+    return renderOriginalChatControls(state);
+  }
+
+  const refreshLabel = t("chat.refreshTitle");
+  const parallelLabel = state.chatParallelMode
+    ? ouiChatCopy("Single view", "单窗口")
+    : ouiChatCopy("Four-pane view", "四宫格");
+  const focusLabel = ouiChatCopy("Focus mode", "专注模式");
+  const parallelPanes = state.chatParallelPanes ?? [];
+  const parallelBusy = parallelPanes.some(
+    (pane) =>
+      pane.chatLoading || pane.chatSending || Boolean(pane.chatRunId) || pane.chatStream !== null,
+  );
+  const refreshDisabled =
+    !state.connected ||
+    (state.chatParallelMode
+      ? parallelBusy
+      : state.chatLoading ||
+        state.chatSending ||
+        Boolean(state.chatRunId) ||
+        state.chatStream !== null);
+  const refreshIcon = html`
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path>
+      <path d="M21 3v5h-5"></path>
+    </svg>
+  `;
+  const focusIcon = html`
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M4 7V4h3"></path>
+      <path d="M20 7V4h-3"></path>
+      <path d="M4 17v3h3"></path>
+      <path d="M20 17v3h-3"></path>
+      <circle cx="12" cy="12" r="3"></circle>
+    </svg>
+  `;
+  const focusActive = !state.chatParallelMode && state.settings.chatFocusMode;
+  const focusDisabled = state.onboarding;
+  return html`
+    <div class="chat-controls">
+      <button
+        class="btn btn--sm btn--icon ${state.chatParallelMode ? "active" : ""}"
+        @click=${() => {
+          state.setChatParallelMode(!state.chatParallelMode);
+        }}
+        aria-pressed=${state.chatParallelMode}
+        title=${parallelLabel}
+        aria-label=${parallelLabel}
+        data-tooltip=${parallelLabel}
+      >
+        ${icons.layoutGrid}
+      </button>
+      <button
+        class="btn btn--sm btn--icon ${focusActive ? "active" : ""}"
+        ?disabled=${focusDisabled}
+        @click=${() => {
+          if (focusDisabled) {
+            return;
+          }
+          const nextFocusMode = state.chatParallelMode ? true : !state.settings.chatFocusMode;
+          if (state.chatParallelMode) {
+            state.setChatParallelMode(false);
+          }
+          state.applySettings({
+            ...state.settings,
+            chatFocusMode: nextFocusMode,
+          });
+        }}
+        aria-pressed=${focusActive}
+        title=${focusLabel}
+        aria-label=${focusLabel}
+        data-tooltip=${focusLabel}
+      >
+        ${focusIcon}
+      </button>
+      <button
+        class="btn btn--sm btn--icon"
+        ?disabled=${refreshDisabled}
+        @click=${async () => {
+          if (state.chatParallelMode) {
+            void state.refreshParallelChatPanes();
+            return;
+          }
+          await handleChatManualRefresh(state as unknown as ChatRefreshHost);
+        }}
+        title=${refreshLabel}
+        aria-label=${refreshLabel}
+        data-tooltip=${refreshLabel}
+      >
+        ${refreshIcon}
+      </button>
+    </div>
+  `;
+}
+
 /**
  * Mobile-only gear toggle + dropdown for chat controls.
  * Rendered in the topbar so it doesn't consume content-header space.
@@ -504,71 +1271,75 @@ export function renderChatMobileToggle(state: AppViewState) {
         }}
       >
         <div class="chat-controls">
-          ${renderChatSessionSelectBase(state, switchChatSession)}
-          <div class="chat-controls__thinking">
-            <button
-              class="btn btn--sm btn--icon ${showThinking ? "active" : ""}"
-              ?disabled=${disableThinkingToggle}
-              @click=${() => {
-                if (!disableThinkingToggle) {
-                  state.applySettings({
-                    ...state.settings,
-                    chatShowThinking: !state.settings.chatShowThinking,
-                  });
-                }
-              }}
-              aria-pressed=${showThinking}
-              title=${t("chat.thinkingToggle")}
-            >
-              ${icons.brain}
-            </button>
-            <button
-              class="btn btn--sm btn--icon ${showToolCalls ? "active" : ""}"
-              ?disabled=${disableThinkingToggle}
-              @click=${() => {
-                if (!disableThinkingToggle) {
-                  state.applySettings({
-                    ...state.settings,
-                    chatShowToolCalls: !state.settings.chatShowToolCalls,
-                  });
-                }
-              }}
-              aria-pressed=${showToolCalls}
-              title=${t("chat.toolCallsToggle")}
-            >
-              ${toolCallsIcon}
-            </button>
-            <button
-              class="btn btn--sm btn--icon ${focusActive ? "active" : ""}"
-              ?disabled=${disableFocusToggle}
-              @click=${() => {
-                if (!disableFocusToggle) {
-                  state.applySettings({
-                    ...state.settings,
-                    chatFocusMode: !state.settings.chatFocusMode,
-                  });
-                }
-              }}
-              aria-pressed=${focusActive}
-              title=${t("chat.focusToggle")}
-            >
-              ${focusIcon}
-            </button>
-            <button
-              class="btn btn--sm btn--icon ${hideCron ? "active" : ""}"
-              @click=${() => {
-                state.sessionsHideCron = !hideCron;
-              }}
-              aria-pressed=${hideCron}
-              title=${hideCron
-                ? hiddenCronCount > 0
-                  ? t("chat.showCronSessionsHidden", { count: String(hiddenCronCount) })
-                  : t("chat.showCronSessions")
-                : t("chat.hideCronSessions")}
-            >
-              ${renderCronFilterIcon(hiddenCronCount)}
-            </button>
-          </div>
+          ${state.tab === "ouiChat"
+            ? renderOuiChatSessionSelectCompact(state)
+            : html`
+                ${renderChatSessionSelectBase(state, switchChatSession)}
+                <div class="chat-controls__thinking">
+                  <button
+                    class="btn btn--sm btn--icon ${showThinking ? "active" : ""}"
+                    ?disabled=${disableThinkingToggle}
+                    @click=${() => {
+                      if (!disableThinkingToggle) {
+                        state.applySettings({
+                          ...state.settings,
+                          chatShowThinking: !state.settings.chatShowThinking,
+                        });
+                      }
+                    }}
+                    aria-pressed=${showThinking}
+                    title=${t("chat.thinkingToggle")}
+                  >
+                    ${icons.brain}
+                  </button>
+                  <button
+                    class="btn btn--sm btn--icon ${showToolCalls ? "active" : ""}"
+                    ?disabled=${disableThinkingToggle}
+                    @click=${() => {
+                      if (!disableThinkingToggle) {
+                        state.applySettings({
+                          ...state.settings,
+                          chatShowToolCalls: !state.settings.chatShowToolCalls,
+                        });
+                      }
+                    }}
+                    aria-pressed=${showToolCalls}
+                    title=${t("chat.toolCallsToggle")}
+                  >
+                    ${toolCallsIcon}
+                  </button>
+                  <button
+                    class="btn btn--sm btn--icon ${focusActive ? "active" : ""}"
+                    ?disabled=${disableFocusToggle}
+                    @click=${() => {
+                      if (!disableFocusToggle) {
+                        state.applySettings({
+                          ...state.settings,
+                          chatFocusMode: !state.settings.chatFocusMode,
+                        });
+                      }
+                    }}
+                    aria-pressed=${focusActive}
+                    title=${t("chat.focusToggle")}
+                  >
+                    ${focusIcon}
+                  </button>
+                  <button
+                    class="btn btn--sm btn--icon ${hideCron ? "active" : ""}"
+                    @click=${() => {
+                      state.sessionsHideCron = !hideCron;
+                    }}
+                    aria-pressed=${hideCron}
+                    title=${hideCron
+                      ? hiddenCronCount > 0
+                        ? t("chat.showCronSessionsHidden", { count: String(hiddenCronCount) })
+                        : t("chat.showCronSessions")
+                      : t("chat.hideCronSessions")}
+                  >
+                    ${renderCronFilterIcon(hiddenCronCount)}
+                  </button>
+                </div>
+              `}
         </div>
       </div>
     </div>

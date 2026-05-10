@@ -245,12 +245,18 @@ export function resolveChatAvatarRenderUrl(
 
 export function agentLogoUrl(basePath: string): string {
   const base = normalizeOptionalString(basePath)?.replace(/\/$/, "") ?? "";
-  return base ? `${base}/favicon.svg` : "favicon.svg";
+  return base ? `${base}/favicon.svg` : "/favicon.svg";
+}
+
+export function ouiLogoUrl(basePath: string): string {
+  const base = normalizeOptionalString(basePath)?.replace(/\/$/, "") ?? "";
+  const path = "/oui-icon.png?v=lobster-left-bottom";
+  return base ? `${base}${path}` : path;
 }
 
 export function assistantAvatarFallbackUrl(basePath: string): string {
   const base = normalizeOptionalString(basePath)?.replace(/\/$/, "") ?? "";
-  return base ? `${base}/apple-touch-icon.png` : "apple-touch-icon.png";
+  return base ? `${base}/apple-touch-icon.png` : "/apple-touch-icon.png";
 }
 
 function isAvatarUrl(value: string): boolean {

@@ -1,12 +1,5 @@
 import { connectGateway } from "./app-gateway.ts";
-import {
-  startLogsPolling,
-  startNodesPolling,
-  stopLogsPolling,
-  stopNodesPolling,
-  startDebugPolling,
-  stopDebugPolling,
-} from "./app-polling.ts";
+import { stopLogsPolling, stopNodesPolling, stopDebugPolling } from "./app-polling.ts";
 import { observeTopbar, scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
 import {
   applySettingsFromUrl,
@@ -17,7 +10,7 @@ import {
 } from "./app-settings.ts";
 import { startControlUiResponsivenessObserver } from "./control-ui-performance.ts";
 import { loadControlUiBootstrapConfig } from "./controllers/control-ui-bootstrap.ts";
-import type { Tab } from "./navigation.ts";
+import { isChatTab, type Tab } from "./navigation.ts";
 
 type LifecycleHost = {
   basePath: string;
@@ -72,13 +65,6 @@ export function handleConnected(host: LifecycleHost) {
     }
     connectGateway(host as unknown as Parameters<typeof connectGateway>[0]);
   });
-  startNodesPolling(host as unknown as Parameters<typeof startNodesPolling>[0]);
-  if (host.tab === "logs") {
-    startLogsPolling(host as unknown as Parameters<typeof startLogsPolling>[0]);
-  }
-  if (host.tab === "debug") {
-    startDebugPolling(host as unknown as Parameters<typeof startDebugPolling>[0]);
-  }
   host.controlUiResponsivenessObserver ??= startControlUiResponsivenessObserver(
     host as unknown as Parameters<typeof startControlUiResponsivenessObserver>[0],
   );
@@ -130,11 +116,11 @@ export function handleDisconnected(host: LifecycleHost) {
 }
 
 export function handleUpdated(host: LifecycleHost, changed: Map<PropertyKey, unknown>) {
-  if (host.tab === "chat" && host.chatManualRefreshInFlight) {
+  if (isChatTab(host.tab) && host.chatManualRefreshInFlight) {
     return;
   }
   if (
-    host.tab === "chat" &&
+    isChatTab(host.tab) &&
     (changed.has("chatMessages") ||
       changed.has("chatToolMessages") ||
       changed.has("chatStream") ||

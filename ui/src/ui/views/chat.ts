@@ -3,6 +3,7 @@ import { ifDefined } from "lit/directives/if-defined.js";
 import { ref } from "lit/directives/ref.js";
 import { repeat } from "lit/directives/repeat.js";
 import { t } from "../../i18n/index.ts";
+import { isZhCnConfigCopy, localizeConfigCopy } from "../../i18n/lib/config-copy.ts";
 import type { CompactionStatus, FallbackStatus } from "../app-tool-stream.ts";
 import {
   getChatAttachmentPreviewUrl,
@@ -130,6 +131,7 @@ export type ChatProps = {
   onCloseSidebar?: () => void;
   onSplitRatioChange?: (ratio: number) => void;
   onChatScroll?: (event: Event) => void;
+  topChrome?: TemplateResult | typeof nothing;
   basePath?: string;
 };
 
@@ -331,19 +333,25 @@ function renderAttachmentPreview(props: ChatProps): TemplateResult | typeof noth
               .join(" ")}
           >
             ${isImageAttachment(att) && getChatAttachmentPreviewUrl(att)
-              ? html`<img src=${getChatAttachmentPreviewUrl(att)!} alt="Attachment preview" />`
+              ? html`<img
+                  src=${getChatAttachmentPreviewUrl(att)!}
+                  alt=${localizeConfigCopy("Attachment preview")}
+                />`
               : html`
-                  <div class="chat-attachment-file" title=${att.fileName ?? "Attached file"}>
+                  <div
+                    class="chat-attachment-file"
+                    title=${att.fileName ?? localizeConfigCopy("Attached file")}
+                  >
                     <span class="chat-attachment-file__icon">${icons.paperclip}</span>
                     <span class="chat-attachment-file__name"
-                      >${att.fileName ?? "Attached file"}</span
+                      >${att.fileName ?? localizeConfigCopy("Attached file")}</span
                     >
                   </div>
                 `}
             <button
               class="chat-attachment-remove"
               type="button"
-              aria-label="Remove attachment"
+              aria-label=${localizeConfigCopy("Remove attachment")}
               @click=${() => {
                 const next = (props.attachments ?? []).filter((a) => a.id !== att.id);
                 releaseChatAttachmentPayload(att.id);
@@ -563,8 +571,8 @@ function renderSearchBar(requestUpdate: () => void): TemplateResult | typeof not
       ${icons.search}
       <input
         type="text"
-        placeholder="Search messages..."
-        aria-label="Search messages"
+        placeholder=${localizeConfigCopy("Search messages...")}
+        aria-label=${localizeConfigCopy("Search messages")}
         .value=${vs.searchQuery}
         @input=${(e: Event) => {
           vs.searchQuery = (e.target as HTMLInputElement).value;
@@ -573,7 +581,7 @@ function renderSearchBar(requestUpdate: () => void): TemplateResult | typeof not
       />
       <button
         class="btn btn--ghost"
-        aria-label="Close search"
+        aria-label=${localizeConfigCopy("Close search")}
         @click=${() => {
           vs.searchOpen = false;
           vs.searchQuery = "";
@@ -619,7 +627,8 @@ function renderPinnedSection(
           requestUpdate();
         }}
       >
-        ${icons.bookmark} ${entries.length} pinned
+        ${icons.bookmark}
+        ${isZhCnConfigCopy() ? `${entries.length} 条已固定` : `${entries.length} pinned`}
         <span class="collapse-chevron ${vs.pinnedExpanded ? "" : "collapse-chevron--collapsed"}"
           >${icons.chevronDown}</span
         >
@@ -642,7 +651,7 @@ function renderPinnedSection(
                         pinned.unpin(index);
                         requestUpdate();
                       }}
-                      title="Unpin"
+                      title=${localizeConfigCopy("Unpin")}
                     >
                       ${icons.x}
                     </button>
@@ -671,7 +680,7 @@ function renderSlashMenu(
         id=${SLASH_MENU_LISTBOX_ID}
         class="slash-menu"
         role="listbox"
-        aria-label="Command arguments"
+        aria-label=${localizeConfigCopy("Command arguments")}
       >
         <div class="slash-menu-group">
           <div class="slash-menu-group__label">
@@ -700,7 +709,11 @@ function renderSlashMenu(
           )}
         </div>
         <div class="slash-menu-footer">
-          <kbd>↑↓</kbd> navigate <kbd>Tab</kbd> fill <kbd>Enter</kbd> run <kbd>Esc</kbd> close
+          <kbd>↑↓</kbd> ${localizeConfigCopy("navigate")} <kbd>Tab</kbd> ${localizeConfigCopy(
+            "fill",
+          )} <kbd>Enter</kbd> ${localizeConfigCopy("run")} <kbd>Esc</kbd> ${localizeConfigCopy(
+            "close",
+          )}
         </div>
       </div>
     `;
@@ -751,9 +764,13 @@ function renderSlashMenu(
               ${cmd.args ? html`<span class="slash-menu-args">${cmd.args}</span>` : nothing}
               <span class="slash-menu-desc">${cmd.description}</span>
               ${cmd.argOptions?.length
-                ? html`<span class="slash-menu-badge">${cmd.argOptions.length} options</span>`
+                ? html`<span class="slash-menu-badge">
+                    ${isZhCnConfigCopy()
+                      ? `${cmd.argOptions.length} 个选项`
+                      : `${cmd.argOptions.length} options`}
+                  </span>`
                 : cmd.executeLocal && !cmd.args
-                  ? html` <span class="slash-menu-badge">instant</span> `
+                  ? html` <span class="slash-menu-badge">${localizeConfigCopy("instant")}</span> `
                   : nothing}
             </div>
           `,
@@ -765,7 +782,12 @@ function renderSlashMenu(
   const hiddenCount = vs.slashMenuExpanded ? 0 : getHiddenCommandCount();
 
   return html`
-    <div id=${SLASH_MENU_LISTBOX_ID} class="slash-menu" role="listbox" aria-label="Slash commands">
+    <div
+      id=${SLASH_MENU_LISTBOX_ID}
+      class="slash-menu"
+      role="listbox"
+      aria-label=${localizeConfigCopy("Slash commands")}
+    >
       ${sections}
       ${hiddenCount > 0
         ? html`<button
@@ -777,11 +799,16 @@ function renderSlashMenu(
               updateSlashMenu(props.draft, requestUpdate);
             }}
           >
-            Show ${hiddenCount} more command${hiddenCount !== 1 ? "s" : ""}
+            ${isZhCnConfigCopy()
+              ? `显示另外 ${hiddenCount} 个命令`
+              : `Show ${hiddenCount} more command${hiddenCount !== 1 ? "s" : ""}`}
           </button>`
         : nothing}
       <div class="slash-menu-footer">
-        <kbd>↑↓</kbd> navigate <kbd>Tab</kbd> fill <kbd>Enter</kbd> select <kbd>Esc</kbd> close
+        <kbd>↑↓</kbd> ${localizeConfigCopy("navigate")} <kbd>Tab</kbd> ${localizeConfigCopy("fill")}
+        <kbd>Enter</kbd> ${localizeConfigCopy("select")} <kbd>Esc</kbd> ${localizeConfigCopy(
+          "close",
+        )}
       </div>
     </div>
   `;
@@ -807,9 +834,11 @@ export function renderChat(props: ChatProps) {
 
   const placeholder = props.connected
     ? hasAttachments
-      ? "Add a message or paste more images..."
-      : `Message ${props.assistantName || "agent"} (Enter to send)`
-    : "Connect to the gateway to start chatting...";
+      ? localizeConfigCopy("Add a message or paste more images...")
+      : isZhCnConfigCopy()
+        ? `给 ${props.assistantName || "agent"} 发消息（Enter 发送）`
+        : `Message ${props.assistantName || "agent"} (Enter to send)`
+    : localizeConfigCopy("Connect to the gateway to start chatting...");
 
   const requestUpdate = props.onRequestUpdate ?? (() => {});
   const splitRatio = props.splitRatio ?? 0.6;
@@ -861,7 +890,7 @@ export function renderChat(props: ChatProps) {
       <div class="chat-thread-inner">
         ${showLoadingSkeleton
           ? html`
-              <div class="chat-loading-skeleton" aria-label="Loading chat">
+              <div class="chat-loading-skeleton" aria-label=${localizeConfigCopy("Loading chat")}>
                 <div class="chat-line assistant">
                   <div class="chat-msg">
                     <div class="chat-bubble">
@@ -900,7 +929,9 @@ export function renderChat(props: ChatProps) {
           : nothing}
         ${isEmpty && !vs.searchOpen ? renderWelcomeState(props) : nothing}
         ${isEmpty && vs.searchOpen
-          ? html` <div class="agent-chat__empty">No matching messages</div> `
+          ? html`
+              <div class="agent-chat__empty">${localizeConfigCopy("No matching messages")}</div>
+            `
           : nothing}
         ${repeat(
           chatItems,
@@ -1147,8 +1178,8 @@ export function renderChat(props: ChatProps) {
                       class="callout__dismiss"
                       type="button"
                       @click=${props.onDismissError}
-                      aria-label="Dismiss error"
-                      title="Dismiss error"
+                      aria-label=${localizeConfigCopy("Dismiss error")}
+                      title=${localizeConfigCopy("Dismiss error")}
                     >
                       ${icons.x}
                     </button>
@@ -1163,14 +1194,15 @@ export function renderChat(props: ChatProps) {
               class="chat-focus-exit"
               type="button"
               @click=${props.onToggleFocusMode}
-              aria-label="Exit focus mode"
-              title="Exit focus mode"
+              aria-label=${localizeConfigCopy("Exit focus mode")}
+              title=${localizeConfigCopy("Exit focus mode")}
             >
               ${icons.x}
             </button>
           `
         : nothing}
-      ${renderSearchBar(requestUpdate)} ${renderPinnedSection(props, pinned, requestUpdate)}
+      ${props.topChrome ?? nothing} ${renderSearchBar(requestUpdate)}
+      ${renderPinnedSection(props, pinned, requestUpdate)}
 
       <div class="chat-split-container ${sidebarOpen ? "chat-split-container--open" : ""}">
         <div
@@ -1227,7 +1259,7 @@ export function renderChat(props: ChatProps) {
       ${props.showNewMessages
         ? html`
             <button class="chat-new-messages" type="button" @click=${props.onScrollToBottom}>
-              ${icons.arrowDown} New messages
+              ${icons.arrowDown} ${localizeConfigCopy("New messages")}
             </button>
           `
         : nothing}
@@ -1250,10 +1282,10 @@ export function renderChat(props: ChatProps) {
                 ${props.realtimeTalkDetail ??
                 props.realtimeTalkTranscript ??
                 (props.realtimeTalkStatus === "thinking"
-                  ? "Asking OpenClaw..."
+                  ? localizeConfigCopy("Asking OpenClaw...")
                   : props.realtimeTalkStatus === "connecting"
-                    ? "Connecting Talk..."
-                    : "Talk live")}
+                    ? localizeConfigCopy("Connecting Talk...")
+                    : localizeConfigCopy("Talk live"))}
               </div>
             `
           : nothing}
@@ -1288,11 +1320,12 @@ export function renderChat(props: ChatProps) {
           <div class="agent-chat__toolbar-left">
             <button
               class="agent-chat__input-btn"
-              @click=${() => {
-                document.querySelector<HTMLInputElement>(".agent-chat__file-input")?.click();
+              @click=${(event: Event) => {
+                const root = (event.currentTarget as HTMLElement).closest(".chat");
+                root?.querySelector<HTMLInputElement>(".agent-chat__file-input")?.click();
               }}
-              title="Attach file"
-              aria-label="Attach file"
+              title=${localizeConfigCopy("Attach file")}
+              aria-label=${localizeConfigCopy("Attach file")}
               ?disabled=${!props.connected}
             >
               ${icons.paperclip}
@@ -1305,8 +1338,12 @@ export function renderChat(props: ChatProps) {
                       ? "agent-chat__input-btn--talk"
                       : ""}"
                     @click=${props.onToggleRealtimeTalk}
-                    title=${props.realtimeTalkActive ? "Stop Talk" : "Start Talk"}
-                    aria-label=${props.realtimeTalkActive ? "Stop Talk" : "Start Talk"}
+                    title=${props.realtimeTalkActive
+                      ? localizeConfigCopy("Stop Talk")
+                      : localizeConfigCopy("Start Talk")}
+                    aria-label=${props.realtimeTalkActive
+                      ? localizeConfigCopy("Stop Talk")
+                      : localizeConfigCopy("Start Talk")}
                     ?disabled=${!props.connected}
                   >
                     ${props.realtimeTalkActive ? icons.volume2 : icons.radio}

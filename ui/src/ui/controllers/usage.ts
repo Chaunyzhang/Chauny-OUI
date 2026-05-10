@@ -201,6 +201,9 @@ export async function loadUsage(
   overrides?: {
     startDate?: string;
     endDate?: string;
+    includeCost?: boolean;
+    includeContextWeight?: boolean;
+    limit?: number;
   },
 ) {
   // Capture client for TS18047 work around on it being possibly null
@@ -213,6 +216,9 @@ export async function loadUsage(
   try {
     const startDate = overrides?.startDate ?? state.usageStartDate;
     const endDate = overrides?.endDate ?? state.usageEndDate;
+    const includeCost = overrides?.includeCost ?? true;
+    const includeContextWeight = overrides?.includeContextWeight ?? true;
+    const limit = overrides?.limit ?? 1000;
     const runUsageRequests = (includeDateInterpretation: boolean, includeUsageScope: boolean) => {
       const dateInterpretation = includeDateInterpretation
         ? buildDateInterpretationParams(state.usageTimeZone)
@@ -223,15 +229,19 @@ export async function loadUsage(
             includeHistorical: state.usageScope === "family",
           }
         : undefined;
+      const sessionsRequest = client.request("sessions.usage", {
+        startDate,
+        endDate,
+        ...dateInterpretation,
+        ...usageScopeParams,
+        limit,
+        includeContextWeight,
+      });
+      if (!includeCost) {
+        return Promise.all([sessionsRequest, Promise.resolve(null)]);
+      }
       return Promise.all([
-        client.request("sessions.usage", {
-          startDate,
-          endDate,
-          ...dateInterpretation,
-          ...usageScopeParams,
-          limit: 1000, // Cap at 1000 sessions
-          includeContextWeight: true,
-        }),
+        sessionsRequest,
         client.request("usage.cost", {
           startDate,
           endDate,

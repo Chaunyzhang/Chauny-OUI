@@ -120,7 +120,7 @@ describe("loadSettings default gateway URL derivation", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uses configured base path and normalizes trailing slash", () => {
+  it("uses configured base path and normalizes trailing slash", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway.example:8443",
@@ -131,7 +131,7 @@ describe("loadSettings default gateway URL derivation", () => {
     expect(loadSettings().gatewayUrl).toBe(expectedGatewayUrl("/openclaw"));
   });
 
-  it("infers base path from nested pathname when configured base path is not set", () => {
+  it("infers base path from nested pathname when configured base path is not set", async () => {
     setTestLocation({
       protocol: "http:",
       host: "gateway.example:18789",
@@ -141,7 +141,7 @@ describe("loadSettings default gateway URL derivation", () => {
     expect(loadSettings().gatewayUrl).toBe(expectedGatewayUrl("/apps/openclaw"));
   });
 
-  it("skips node sessionStorage accessors that warn without a storage file", () => {
+  it("skips node sessionStorage accessors that warn without a storage file", async () => {
     vi.unstubAllGlobals();
     vi.stubGlobal("localStorage", createStorageMock());
     vi.stubGlobal("navigator", { language: "en-US" } as Navigator);
@@ -164,7 +164,7 @@ describe("loadSettings default gateway URL derivation", () => {
     );
   });
 
-  it("ignores and scrubs legacy persisted tokens", () => {
+  it("ignores and scrubs legacy persisted tokens", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway.example:8443",
@@ -188,6 +188,7 @@ describe("loadSettings default gateway URL derivation", () => {
     const scopedKey = "openclaw.control.settings.v1:wss://gateway.example:8443/openclaw";
     expect(JSON.parse(localStorage.getItem(scopedKey) ?? "{}")).toEqual({
       gatewayUrl: "wss://gateway.example:8443/openclaw",
+      navigationMode: "oui",
       theme: "claw",
       themeMode: "system",
       chatFocusMode: false,
@@ -208,7 +209,7 @@ describe("loadSettings default gateway URL derivation", () => {
     expect(sessionStorage.length).toBe(0);
   });
 
-  it("loads the current-tab token from sessionStorage", () => {
+  it("loads the current-tab token from sessionStorage", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway.example:8443",
@@ -239,7 +240,7 @@ describe("loadSettings default gateway URL derivation", () => {
     });
   });
 
-  it("does not reuse a session token for a different gatewayUrl", () => {
+  it("does not reuse a session token for a different gatewayUrl", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway.example:8443",
@@ -288,7 +289,7 @@ describe("loadSettings default gateway URL derivation", () => {
     });
   });
 
-  it("does not persist gateway tokens when saving settings", () => {
+  it("does not persist gateway tokens when saving settings", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway.example:8443",
@@ -320,6 +321,7 @@ describe("loadSettings default gateway URL derivation", () => {
     const scopedKey = `openclaw.control.settings.v1:${gwUrl}`;
     expect(JSON.parse(localStorage.getItem(scopedKey) ?? "{}")).toEqual({
       gatewayUrl: gwUrl,
+      navigationMode: "oui",
       theme: "claw",
       themeMode: "system",
       chatFocusMode: false,
@@ -340,7 +342,7 @@ describe("loadSettings default gateway URL derivation", () => {
     expect(sessionStorage.length).toBe(1);
   });
 
-  it("clears the current-tab token when saving an empty token", () => {
+  it("clears the current-tab token when saving an empty token", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway.example:8443",
@@ -385,7 +387,7 @@ describe("loadSettings default gateway URL derivation", () => {
     expect(sessionStorage.length).toBe(0);
   });
 
-  it("persists themeMode and navWidth alongside the selected theme", () => {
+  it("persists themeMode and navWidth alongside the selected theme", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway.example:8443",
@@ -418,7 +420,7 @@ describe("loadSettings default gateway URL derivation", () => {
     });
   });
 
-  it("persists the browser-local custom theme payload when present", () => {
+  it("persists the browser-local custom theme payload when present", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway.example:8443",
@@ -454,7 +456,7 @@ describe("loadSettings default gateway URL derivation", () => {
     });
   });
 
-  it("falls back to claw when persisted custom theme data is invalid", () => {
+  it("falls back to claw when persisted custom theme data is invalid", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway.example:8443",
@@ -499,7 +501,7 @@ describe("loadSettings default gateway URL derivation", () => {
     });
   });
 
-  it("scopes persisted session selection per gateway", () => {
+  it("scopes persisted session selection per gateway", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway-a.example:8443",
@@ -531,7 +533,7 @@ describe("loadSettings default gateway URL derivation", () => {
     });
   });
 
-  it("caps persisted session scopes to the most recent gateways", () => {
+  it("caps persisted session scopes to the most recent gateways", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway.example:8443",
@@ -571,17 +573,8 @@ describe("loadSettings default gateway URL derivation", () => {
 
     const persisted = JSON.parse(localStorage.getItem(scopedKey) ?? "{}");
 
-    const sessionsByGateway = persisted.sessionsByGateway as unknown;
-    expect(sessionsByGateway).toEqual(
-      expect.objectContaining({
-        "wss://gateway.example:8443": {
-          sessionKey: "agent:current:main",
-          lastActiveSessionKey: "agent:current:main",
-        },
-      }),
-    );
-    const scopedSessions = sessionsByGateway as Record<string, unknown>;
-    const scopes = Object.keys(scopedSessions);
+    expect(persisted.sessionsByGateway).toBeDefined();
+    const scopes = Object.keys(persisted.sessionsByGateway);
     expect(scopes).toHaveLength(10);
     // oldest stale entries should be evicted
     expect(scopes).not.toContain("wss://stale-0.example:8443");
@@ -589,9 +582,13 @@ describe("loadSettings default gateway URL derivation", () => {
     // newest stale entries and the current gateway should be retained
     expect(scopes).toContain("wss://stale-10.example:8443");
     expect(scopes).toContain("wss://gateway.example:8443");
+    expect(persisted.sessionsByGateway["wss://gateway.example:8443"]).toEqual({
+      sessionKey: "agent:current:main",
+      lastActiveSessionKey: "agent:current:main",
+    });
   });
 
-  it("persists local user identity separately from gateway settings", () => {
+  it("persists local user identity separately from gateway settings", async () => {
     setTestLocation({
       protocol: "https:",
       host: "gateway.example:8443",
@@ -610,7 +607,7 @@ describe("loadSettings default gateway URL derivation", () => {
     });
   });
 
-  it("normalizes invalid local user identity values on load", () => {
+  it("normalizes invalid local user identity values on load", async () => {
     localStorage.setItem(
       "openclaw.control.user.v1",
       JSON.stringify({
@@ -625,7 +622,7 @@ describe("loadSettings default gateway URL derivation", () => {
     });
   });
 
-  it("removes the persisted local user identity when cleared", () => {
+  it("removes the persisted local user identity when cleared", async () => {
     saveLocalUserIdentity({ name: "Buns", avatar: "data:image/png;base64,AAA" });
     saveLocalUserIdentity({ name: null, avatar: null });
 

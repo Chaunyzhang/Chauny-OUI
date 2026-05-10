@@ -5,6 +5,10 @@
 @import "./styles/chat.css";
 @import "./styles/config.css";
 @import "./styles/config-quick.css";
+@import "./styles/oui-select.css";
+@import "./styles/model-manager.css";
+@import "./styles/setup-wizard.css";
+@import "./styles/agent-manager.css";
 @import "./styles/cron-quick-create.css";
 @import "./styles/usage.css";
 @import "./styles/dreams.css";
@@ -17,4 +21,212 @@
   --cm-warning: var(--warn);
   --cm-success: var(--ok);
   --cm-danger: var(--danger);
+}
+
+.oui-overview {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+}
+
+.oui-overview__module {
+  display: grid;
+  gap: 22px;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+}
+
+.oui-overview__module-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.oui-overview__eyebrow {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.oui-overview__module h2 {
+  margin: 4px 0 0;
+  color: var(--text-strong);
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.oui-overview__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.oui-overview__status span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--muted);
+}
+
+.oui-overview__status--online {
+  border-color: color-mix(in srgb, var(--ok) 32%, var(--border));
+  color: var(--ok);
+}
+
+.oui-overview__status--online span {
+  background: var(--ok);
+}
+
+.oui-overview__status--offline {
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--border));
+  color: var(--danger);
+}
+
+.oui-overview__status--offline span {
+  background: var(--danger);
+}
+
+.oui-overview__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.oui-overview__stat {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 18px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 84%, transparent);
+}
+
+.oui-overview__stat:last-child {
+  border-right: 0;
+}
+
+.oui-overview__stat span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.oui-overview__stat strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 16px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oui-overview__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.oui-overview__button {
+  min-height: 44px;
+  gap: 8px;
+}
+
+.oui-overview__button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.oui-overview__error,
+.oui-overview__message {
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  font-weight: 650;
+}
+
+.oui-overview__error,
+.oui-overview__message--error {
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, var(--border));
+  background: color-mix(in srgb, var(--danger) 10%, var(--card));
+  color: var(--danger);
+}
+
+.oui-overview__message--success {
+  border: 1px solid color-mix(in srgb, var(--ok) 34%, var(--border));
+  background: color-mix(in srgb, var(--ok) 10%, var(--card));
+  color: var(--ok);
+}
+
+.oui-overview__usage-card {
+  min-height: 360px;
+}
+
+.oui-overview__usage-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.oui-overview__usage-title {
+  color: var(--text-strong);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.oui-overview__usage-refresh {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 920px) {
+  .oui-overview__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .oui-overview__stat:nth-child(2) {
+    border-right: 0;
+  }
+
+  .oui-overview__stat:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 560px) {
+  .oui-overview__module {
+    padding: 20px;
+  }
+
+  .oui-overview__module-head,
+  .oui-overview__actions,
+  .oui-overview__usage-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .oui-overview__stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oui-overview__stat {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .oui-overview__stat:last-child {
+    border-bottom: 0;
+  }
 }

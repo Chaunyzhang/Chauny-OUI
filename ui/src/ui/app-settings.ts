@@ -1,12 +1,7 @@
 import { roleScopesAllow } from "../../../src/shared/operator-scope-compat.js";
 import { t } from "../i18n/index.ts";
 import { refreshChat } from "./app-chat.ts";
-import {
-  startLogsPolling,
-  stopLogsPolling,
-  startDebugPolling,
-  stopDebugPolling,
-} from "./app-polling.ts";
+import { stopLogsPolling, stopDebugPolling } from "./app-polling.ts";
 import { scheduleChatScroll, scheduleLogsScroll } from "./app-scroll.ts";
 import {
   beginControlUiRefresh,
@@ -47,15 +42,18 @@ import {
   loadModelAuthStatusState,
   type ModelAuthStatusState,
 } from "./controllers/model-auth-status.ts";
+import { loadModels } from "./controllers/models.ts";
 import { loadNodes, type NodesState } from "./controllers/nodes.ts";
 import { loadPresence, type PresenceState } from "./controllers/presence.ts";
 import { loadSessions, type SessionsState } from "./controllers/sessions.ts";
 import { loadSkills, type SkillsState } from "./controllers/skills.ts";
-import { loadUsage, type UsageState } from "./controllers/usage.ts";
+import type { UsageState } from "./controllers/usage.ts";
 import { syncCustomThemeStyleTag } from "./custom-theme.ts";
 import { isMonitoredAuthProvider } from "./model-auth-helpers.ts";
 import {
   inferBasePathFromPathname,
+  isChatTab,
+  isOuiTab,
   normalizeBasePath,
   normalizePath,
   pathForTab,
@@ -71,7 +69,7 @@ import {
 import { normalizeOptionalString } from "./string-coerce.ts";
 import { startThemeTransition, type ThemeTransitionContext } from "./theme-transition.ts";
 import { resolveTheme, type ResolvedTheme, type ThemeMode, type ThemeName } from "./theme.ts";
-import type { AgentsListResult, AttentionItem } from "./types.ts";
+import type { AgentsListResult, AttentionItem, ModelCatalogEntry } from "./types.ts";
 import { normalizeLocalUserIdentity } from "./user-identity.ts";
 import { resetChatViewState } from "./views/chat.ts";
 
@@ -144,6 +142,8 @@ type SettingsAppHost = SettingsHost &
     overviewLogLines: string[];
     attentionItems: AttentionItem[];
     hello: { auth?: { role?: string; scopes?: string[] } } | null;
+    chatModelsLoading: boolean;
+    chatModelCatalog: ModelCatalogEntry[];
   };
 
 export function applySettings(host: SettingsHost, next: UiSettings) {
@@ -346,6 +346,24 @@ async function refreshAgentsTab(host: SettingsHost, app: SettingsAppHost) {
   }
 }
 
+async function refreshModelManagementData(app: SettingsAppHost) {
+  if (!app.client || !app.connected) {
+    app.chatModelsLoading = false;
+    app.chatModelCatalog = [];
+    return;
+  }
+  app.chatModelsLoading = true;
+  try {
+    const [models] = await Promise.all([
+      loadModels(app.client),
+      loadModelAuthStatusState(app, { refresh: false }),
+    ]);
+    app.chatModelCatalog = models;
+  } finally {
+    app.chatModelsLoading = false;
+  }
+}
+
 export async function refreshActiveTab(host: SettingsHost) {
   const app = host as unknown as SettingsAppHost;
   const refreshRun = beginControlUiRefresh(host, host.tab);
@@ -356,9 +374,31 @@ export async function refreshActiveTab(host: SettingsHost) {
       case "appearance":
       case "automation":
       case "infrastructure":
-      case "aiAgents":
-        void loadConfigSchema(app).finally(() => host.requestUpdate?.());
+        await loadConfigSchema(app);
         await loadConfig(app);
+        break;
+      case "aiAgents":
+      case "modelManager":
+        await loadConfigSchema(app);
+        await loadConfig(app);
+        await refreshModelManagementData(app);
+        break;
+      case "agentManager":
+        await loadConfigSchema(app);
+        await loadConfig(app);
+        await Promise.allSettled([refreshModelManagementData(app), loadAgents(app)]);
+        await loadAgentIdentities(app, app.agentsList?.agents.map((agent) => agent.id) ?? []);
+        break;
+      case "setupWizard":
+        await loadConfigSchema(app);
+        await loadConfig(app);
+        await Promise.allSettled([
+          refreshModelManagementData(app),
+          loadChannels(app, false, { softTimeoutMs: 750 }),
+        ]);
+        break;
+      case "ouiOverview":
+        await loadOverview(host);
         break;
       case "overview":
         await loadOverview(host);
@@ -370,7 +410,6 @@ export async function refreshActiveTab(host: SettingsHost) {
         await loadPresence(app);
         break;
       case "usage":
-        await loadUsage(app);
         break;
       case "sessions":
         await loadSessions(app);
@@ -399,6 +438,16 @@ export async function refreshActiveTab(host: SettingsHost) {
         break;
       case "chat":
         await refreshChat(host as unknown as Parameters<typeof refreshChat>[0]);
+        scheduleChatScroll(
+          host as unknown as Parameters<typeof scheduleChatScroll>[0],
+          !host.chatHasAutoScrolled,
+        );
+        break;
+      case "ouiChat":
+        await Promise.allSettled([
+          loadConfig(app),
+          refreshChat(host as unknown as Parameters<typeof refreshChat>[0]),
+        ]);
         scheduleChatScroll(
           host as unknown as Parameters<typeof scheduleChatScroll>[0],
           !host.chatHasAutoScrolled,
@@ -565,26 +614,23 @@ function applyTabSelection(
   next: Tab,
   options: { refreshPolicy: "always" | "connected"; syncUrl?: boolean },
 ) {
+  syncNavigationModeForTab(host, next);
   const prev = host.tab;
   host.tab = next;
   if (prev !== next) {
     scheduleControlUiTabVisibleTiming(host, prev, next);
   }
 
-  // Cleanup chat module state when navigating away from chat
-  if (prev === "chat" && next !== "chat") {
+  // Cleanup chat module state when navigating away from chat surfaces.
+  if (isChatTab(prev) && !isChatTab(next)) {
     resetChatViewState();
   }
 
-  if (next === "chat") {
+  if (isChatTab(next)) {
     host.chatHasAutoScrolled = false;
   }
-  (next === "logs" ? startLogsPolling : stopLogsPolling)(
-    host as unknown as Parameters<typeof startLogsPolling>[0],
-  );
-  (next === "debug" ? startDebugPolling : stopDebugPolling)(
-    host as unknown as Parameters<typeof startDebugPolling>[0],
-  );
+  stopLogsPolling(host as unknown as Parameters<typeof stopLogsPolling>[0]);
+  stopDebugPolling(host as unknown as Parameters<typeof stopDebugPolling>[0]);
 
   if (options.refreshPolicy === "always" || host.connected) {
     void refreshActiveTab(host);
@@ -593,6 +639,14 @@ function applyTabSelection(
   if (options.syncUrl) {
     syncUrlWithTab(host, next, false);
   }
+}
+
+function syncNavigationModeForTab(host: SettingsHost, next: Tab) {
+  const desired = isOuiTab(next) ? "oui" : "original";
+  if ((host.settings.navigationMode ?? "oui") === desired) {
+    return;
+  }
+  applySettings(host, { ...host.settings, navigationMode: desired });
 }
 
 export function syncUrlWithTab(host: SettingsHost, tab: Tab, replace: boolean) {
@@ -605,7 +659,7 @@ export function syncUrlWithTab(host: SettingsHost, tab: Tab, replace: boolean) {
   const currentPath = normalizePath(pathname);
   const url = new URL(href);
 
-  if (tab === "chat" && host.sessionKey) {
+  if (isChatTab(tab) && host.sessionKey) {
     url.searchParams.set("session", host.sessionKey);
   } else {
     url.searchParams.delete("session");
@@ -650,7 +704,6 @@ export async function loadOverview(host: SettingsHost, opts?: { refresh?: boolea
   void Promise.allSettled([
     loadDebug(app),
     loadSkills(app),
-    loadUsage(app),
     loadOverviewLogs(app),
     // `refresh: true` bypasses the gateway's 60s auth-status cache so a
     // user-initiated refresh surfaces post-re-auth state immediately.
@@ -837,9 +890,11 @@ function buildAttentionItems(host: SettingsAppHost) {
 
 export async function loadChannelsTab(host: SettingsHost) {
   const app = host as unknown as SettingsAppHost;
-  void loadConfigSchema(app).finally(() => host.requestUpdate?.());
-  await Promise.all([loadChannels(app, false), loadConfig(app)]);
-  void loadChannels(app, true).finally(() => host.requestUpdate?.());
+  await Promise.all([
+    loadChannels(app, true, { softTimeoutMs: 750 }),
+    loadConfigSchema(app),
+    loadConfig(app),
+  ]);
 }
 
 export async function loadCron(host: SettingsHost) {

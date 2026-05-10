@@ -155,11 +155,7 @@ function renderChatModelSelect(state: AppViewState) {
   const busy =
     state.chatLoading || state.chatSending || Boolean(state.chatRunId) || state.chatStream !== null;
   const disabled =
-    !state.connected ||
-    busy ||
-    Boolean(state.chatModelSwitchPromises?.[state.sessionKey]) ||
-    (state.chatModelsLoading && options.length === 0) ||
-    !state.client;
+    !state.connected || busy || (state.chatModelsLoading && options.length === 0) || !state.client;
   const selectedLabel =
     currentOverride === ""
       ? defaultLabel
@@ -330,13 +326,13 @@ export function renderChatThinkingSelect(state: AppViewState) {
   `;
 }
 
-async function switchChatModel(state: AppViewState, nextModel: string): Promise<boolean> {
+export async function switchChatModel(state: AppViewState, nextModel: string) {
   if (!state.client || !state.connected) {
-    return false;
+    return;
   }
   const currentOverride = resolveChatModelOverrideValue(state);
   if (currentOverride === nextModel) {
-    return true;
+    return;
   }
   const targetSessionKey = state.sessionKey;
   const prevOverride = state.chatModelOverrides[targetSessionKey];
@@ -346,38 +342,18 @@ async function switchChatModel(state: AppViewState, nextModel: string): Promise<
     ...state.chatModelOverrides,
     [targetSessionKey]: createChatModelOverride(nextModel),
   };
-  const client = state.client;
-  let switchPromise: Promise<boolean>;
-  const clearPendingSwitch = () => {
-    if (state.chatModelSwitchPromises?.[targetSessionKey] === switchPromise) {
-      const nextSwitches = { ...state.chatModelSwitchPromises };
-      delete nextSwitches[targetSessionKey];
-      state.chatModelSwitchPromises = nextSwitches;
-    }
-  };
-  switchPromise = (async () => {
-    try {
-      await client.request("sessions.patch", {
-        key: targetSessionKey,
-        model: nextModel || null,
-      });
-      void refreshVisibleToolsEffectiveForCurrentSessionLazy(state);
-      await refreshSessionOptions(state);
-      return true;
-    } catch (err) {
-      // Roll back so the picker reflects the actual server model.
-      state.chatModelOverrides = { ...state.chatModelOverrides, [targetSessionKey]: prevOverride };
-      state.lastError = `Failed to set model: ${String(err)}`;
-      return false;
-    } finally {
-      clearPendingSwitch();
-    }
-  })();
-  state.chatModelSwitchPromises = {
-    ...state.chatModelSwitchPromises,
-    [targetSessionKey]: switchPromise,
-  };
-  return switchPromise;
+  try {
+    await state.client.request("sessions.patch", {
+      key: targetSessionKey,
+      model: nextModel || null,
+    });
+    void refreshVisibleToolsEffectiveForCurrentSessionLazy(state);
+    await refreshSessionOptions(state);
+  } catch (err) {
+    // Roll back so the picker reflects the actual server model.
+    state.chatModelOverrides = { ...state.chatModelOverrides, [targetSessionKey]: prevOverride };
+    state.lastError = `Failed to set model: ${String(err)}`;
+  }
 }
 
 function patchSessionThinkingLevel(
@@ -397,7 +373,7 @@ function patchSessionThinkingLevel(
   };
 }
 
-async function switchChatThinkingLevel(state: AppViewState, nextThinkingLevel: string) {
+export async function switchChatThinkingLevel(state: AppViewState, nextThinkingLevel: string) {
   if (!state.client || !state.connected) {
     return;
   }
@@ -432,6 +408,7 @@ async function switchChatThinkingLevel(state: AppViewState, nextThinkingLevel: s
 /* Channel display labels. */
 const CHANNEL_LABELS: Record<string, string> = {
   imessage: "iMessage",
+  bluebubbles: "iMessage",
   telegram: "Telegram",
   discord: "Discord",
   signal: "Signal",
@@ -495,7 +472,7 @@ export function parseSessionKey(key: string): SessionKeyInfo {
     return { prefix: "", fallbackName: `${channelLabel} Group` };
   }
 
-  // Channel-prefixed legacy keys, for example "imessage:g-...".
+  // Channel-prefixed legacy keys, for example "bluebubbles:g-...".
   for (const ch of KNOWN_CHANNEL_KEYS) {
     if (key === ch || key.startsWith(`${ch}:`)) {
       return { prefix: "", fallbackName: `${CHANNEL_LABELS[ch]} Session` };
@@ -563,12 +540,12 @@ export type SessionOptionGroup = {
   options: SessionOptionEntry[];
 };
 
-type ChatAgentFilterOption = {
+export type ChatAgentFilterOption = {
   id: string;
   label: string;
 };
 
-function resolveChatAgentFilterId(state: AppViewState, sessionKey: string): string {
+export function resolveChatAgentFilterId(state: AppViewState, sessionKey: string): string {
   const parsed = parseAgentSessionKey(sessionKey);
   return normalizeAgentId(parsed?.agentId ?? state.agentsList?.defaultId ?? "main");
 }
@@ -585,7 +562,7 @@ function isAgentMainSessionKey(key: string): boolean {
   return parseAgentSessionKey(key)?.rest === "main";
 }
 
-function resolvePreferredSessionForAgent(state: AppViewState, agentId: string): string {
+export function resolvePreferredSessionForAgent(state: AppViewState, agentId: string): string {
   const normalizedAgentId = normalizeAgentId(agentId);
   const defaultAgentId = normalizeAgentId(state.agentsList?.defaultId ?? "main");
   const currentParsed = parseAgentSessionKey(state.sessionKey);
@@ -593,19 +570,13 @@ function resolvePreferredSessionForAgent(state: AppViewState, agentId: string): 
     return state.sessionKey;
   }
   const rows = state.sessionsResult?.sessions ?? [];
-  let row: (typeof rows)[number] | undefined;
-  for (const entry of rows) {
-    if (!isSessionKeyTiedToAgent(entry.key, normalizedAgentId, defaultAgentId)) {
-      continue;
-    }
-    if (!row || (entry.updatedAt ?? 0) > (row.updatedAt ?? 0)) {
-      row = entry;
-    }
-  }
+  const row = rows
+    .filter((entry) => isSessionKeyTiedToAgent(entry.key, normalizedAgentId, defaultAgentId))
+    .toSorted((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0))[0];
   return row?.key ?? buildAgentMainSessionKey({ agentId: normalizedAgentId });
 }
 
-function resolveChatAgentFilterOptions(state: AppViewState): ChatAgentFilterOption[] {
+export function resolveChatAgentFilterOptions(state: AppViewState): ChatAgentFilterOption[] {
   const seen = new Set<string>();
   const options: ChatAgentFilterOption[] = [];
   const add = (agentId: string) => {

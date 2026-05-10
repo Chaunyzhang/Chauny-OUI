@@ -151,10 +151,11 @@ describe("handleGatewayEvent sessions.changed", () => {
     expect(loadSessionsMock).not.toHaveBeenCalled();
   });
 
-  it("reloads sessions when a change event cannot be applied locally", () => {
+  it("reloads sessions on the sessions tab when a change event cannot be applied locally", () => {
     loadSessionsMock.mockReset();
     applySessionsChangedEventMock.mockReset().mockReturnValue({ applied: false });
     const host = createHost();
+    host.tab = "sessions";
 
     handleGatewayEvent(host, {
       type: "event",
@@ -164,6 +165,22 @@ describe("handleGatewayEvent sessions.changed", () => {
     });
 
     expect(loadSessionsMock).toHaveBeenCalledWith(host);
+  });
+
+  it("does not reload sessions outside the sessions tab when a change cannot be applied locally", () => {
+    loadSessionsMock.mockReset();
+    applySessionsChangedEventMock.mockReset().mockReturnValue({ applied: false });
+    const host = createHost();
+    host.tab = "overview";
+
+    handleGatewayEvent(host, {
+      type: "event",
+      event: "sessions.changed",
+      payload: { sessionKey: "agent:main:main", reason: "cleanup" },
+      seq: 1,
+    });
+
+    expect(loadSessionsMock).not.toHaveBeenCalled();
   });
 
   it("does not reload sessions for applied message-phase session patches to existing rows", () => {
@@ -262,6 +279,7 @@ describe("handleGatewayEvent session.message", () => {
   it("reloads chat history for the active session", () => {
     loadChatHistoryMock.mockReset();
     const host = createHost();
+    host.tab = "chat";
     host.sessionKey = "agent:qa:main";
 
     handleGatewayEvent(host, {
@@ -278,6 +296,7 @@ describe("handleGatewayEvent session.message", () => {
   it("skips history reload while a chat run is active", () => {
     loadChatHistoryMock.mockReset();
     const host = createHost();
+    host.tab = "chat";
     host.sessionKey = "agent:qa:main";
     host.chatRunId = "run-123";
 
@@ -294,12 +313,29 @@ describe("handleGatewayEvent session.message", () => {
   it("ignores transcript updates for other sessions", () => {
     loadChatHistoryMock.mockReset();
     const host = createHost();
+    host.tab = "chat";
     host.sessionKey = "agent:qa:main";
 
     handleGatewayEvent(host, {
       type: "event",
       event: "session.message",
       payload: { sessionKey: "agent:qa:other" },
+      seq: 1,
+    });
+
+    expect(loadChatHistoryMock).not.toHaveBeenCalled();
+  });
+
+  it("does not reload chat history outside chat tabs", () => {
+    loadChatHistoryMock.mockReset();
+    const host = createHost();
+    host.tab = "overview";
+    host.sessionKey = "agent:qa:main";
+
+    handleGatewayEvent(host, {
+      type: "event",
+      event: "session.message",
+      payload: { sessionKey: "agent:qa:main" },
       seq: 1,
     });
 

@@ -925,6 +925,7 @@ describe("connectGateway", () => {
     "replays deferred session.message reloads after %s clears the active run",
     (terminalState) => {
       const { host, client } = connectHostGateway();
+      host.tab = "chat";
       host.chatRunId = "main-run-3";
       loadChatHistoryMock.mockClear();
 
@@ -955,6 +956,7 @@ describe("connectGateway", () => {
 
   it("does not reload chat history after final assistant payload reconciles an active run", () => {
     const { host, client } = connectHostGateway();
+    host.tab = "chat";
     host.chatRunId = "main-run-4";
     loadChatHistoryMock.mockClear();
 
@@ -989,6 +991,7 @@ describe("connectGateway", () => {
 
   it("replays deferred session.message reloads after legacy silent final payload", () => {
     const { host, client } = connectHostGateway();
+    host.tab = "chat";
     host.chatRunId = "main-run-silent";
     loadChatHistoryMock.mockClear();
 
@@ -1019,6 +1022,7 @@ describe("connectGateway", () => {
 
   it("keeps deferred session.message reload pending across unrelated terminal events", () => {
     const { host, client } = connectHostGateway();
+    host.tab = "chat";
     host.chatRunId = "main-run-5";
     host.chatStream = "still streaming";
     loadChatHistoryMock.mockClear();
@@ -1058,6 +1062,7 @@ describe("connectGateway", () => {
 
   it("keeps deferred session.message reload pending across unowned terminal events", () => {
     const { host, client } = connectHostGateway();
+    host.tab = "chat";
     host.chatRunId = "main-run-unowned";
     host.chatStream = "still streaming";
     loadChatHistoryMock.mockClear();
