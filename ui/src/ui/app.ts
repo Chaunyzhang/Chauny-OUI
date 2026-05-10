@@ -92,11 +92,16 @@ import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
 import {
   assignOuiTask as assignOuiTaskInternal,
+  createOuiCompany as createOuiCompanyInternal,
   createOuiTask as createOuiTaskInternal,
   createOuiTaskFromParallelPane as createOuiTaskFromParallelPaneInternal,
+  generateOuiCeoRunbookDraft as generateOuiCeoRunbookDraftInternal,
   loadOuiCompany as loadOuiCompanyInternal,
+  selectOuiCompany as selectOuiCompanyInternal,
   queueOuiTaskRun as queueOuiTaskRunInternal,
   selectOuiTask as selectOuiTaskInternal,
+  sendOuiCeoMessage as sendOuiCeoMessageInternal,
+  startOuiRunbookVersion as startOuiRunbookVersionInternal,
   transitionOuiTaskReview as transitionOuiTaskReviewInternal,
   type OuiCompanyMessage,
 } from "./controllers/oui-company.ts";
@@ -554,15 +559,37 @@ export class OpenClawApp extends LitElement {
   @state() ouiCompanyApiAvailable = false;
   @state() ouiCompanyError: string | null = null;
   @state() ouiCompanyMessage: OuiCompanyMessage | null = null;
+  @state()
+  ouiCompanySummaries: import("../oui/shared/product-types.ts").OuiCompanySummary[] = [];
   @state() ouiCompanyRecord: import("../oui/shared/product-types.ts").OuiCompanyRecord | null =
     null;
   @state() ouiCompanyAgents: import("../oui/shared/product-types.ts").OuiAgentRecord[] = [];
+  @state()
+  ouiCompanyCeoConversations: import("../oui/shared/product-types.ts").OuiConversationRecord[] = [];
+  @state() ouiCompanyCeoMessages: import("../oui/shared/product-types.ts").OuiMessageRecord[] = [];
   @state() ouiCompanyTasks: import("../oui/shared/product-types.ts").OuiTaskRecord[] = [];
+  @state() ouiCompanyRunbooks: import("../oui/shared/product-types.ts").OuiRunbookRecord[] = [];
+  @state()
+  ouiCompanyRunbookVersions: import("../oui/shared/product-types.ts").OuiRunbookVersionRecord[] =
+    [];
+  @state()
+  ouiCompanyActiveRunbookVersion:
+    | import("../oui/shared/product-types.ts").OuiRunbookVersionRecord
+    | null = null;
+  @state() ouiCompanyWorkNodes: import("../oui/shared/product-types.ts").OuiWorkNodeRecord[] = [];
+  @state() ouiCompanyInboxItems: import("../oui/shared/product-types.ts").OuiInboxItemRecord[] = [];
+  @state()
+  ouiCompanyControlRoom: import("../oui/shared/product-types.ts").OuiControlRoomReadModel | null =
+    null;
   @state()
   ouiCompanyAdapters: import("../oui/shared/product-types.ts").OuiEmployeeAdapterPreview[] = [];
   @state() ouiCompanyTimeline: import("../oui/shared/product-types.ts").OuiTaskTimeline | null =
     null;
   @state() ouiCompanySelectedTaskId: string | null = null;
+  @state() ouiCreateCompanyName = "";
+  @state() ouiCreateCompanyCeoId = "";
+  @state() ouiCompanyCeoDraft = "";
+  @state() ouiCompanyCeoConversationId: string | null = null;
   @state() ouiTaskDraftTitle = "";
   @state() ouiTaskDraftDescription = "";
   @state() ouiTaskDraftAgentId = "";
@@ -881,6 +908,26 @@ export class OpenClawApp extends LitElement {
 
   async loadOuiCompany() {
     await loadOuiCompanyInternal(this);
+  }
+
+  async selectOuiCompany(companyId: string) {
+    await selectOuiCompanyInternal(this, companyId);
+  }
+
+  async createOuiCompany() {
+    await createOuiCompanyInternal(this);
+  }
+
+  async sendOuiCeoMessage() {
+    await sendOuiCeoMessageInternal(this);
+  }
+
+  async generateOuiCeoRunbookDraft() {
+    await generateOuiCeoRunbookDraftInternal(this);
+  }
+
+  async startOuiRunbookVersion(versionId: string) {
+    await startOuiRunbookVersionInternal(this, versionId);
   }
 
   async createOuiTask() {

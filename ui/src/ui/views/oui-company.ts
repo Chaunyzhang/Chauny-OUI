@@ -2,12 +2,21 @@ import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import type {
   OuiAgentRecord,
+  OuiCompanyRecord,
+  OuiCompanySummary,
+  OuiControlRoomReadModel,
+  OuiConversationRecord,
   OuiEmployeeAdapterPreview,
+  OuiInboxItemRecord,
+  OuiMessageRecord,
+  OuiRunbookRecord,
+  OuiRunbookVersionRecord,
   OuiTaskRecord,
   OuiTaskReviewState,
   OuiTaskTimeline,
+  OuiWorkNodeRecord,
 } from "../../oui/shared/product-types.ts";
-import type { OuiCompanyMessage } from "../controllers/oui-company.ts";
+import type { OuiCompanyCeoCandidate, OuiCompanyMessage } from "../controllers/oui-company.ts";
 import { icons } from "../icons.ts";
 import { ouiCompanyCopy, ouiCompanyStatusLabel } from "../oui-company-copy.ts";
 
@@ -17,16 +26,37 @@ export type OuiCompanyProps = {
   apiAvailable: boolean;
   error: string | null;
   message: OuiCompanyMessage | null;
-  company: { id: string; name: string; defaultLeaderAgentId?: string | null } | null;
+  companySummaries: OuiCompanySummary[];
+  company: OuiCompanyRecord | null;
+  ceoCandidates: OuiCompanyCeoCandidate[];
   agents: OuiAgentRecord[];
+  ceoConversations: OuiConversationRecord[];
+  ceoMessages: OuiMessageRecord[];
   tasks: OuiTaskRecord[];
+  runbooks: OuiRunbookRecord[];
+  runbookVersions: OuiRunbookVersionRecord[];
+  activeRunbookVersion: OuiRunbookVersionRecord | null;
+  workNodes: OuiWorkNodeRecord[];
+  inboxItems: OuiInboxItemRecord[];
+  controlRoom: OuiControlRoomReadModel | null;
   adapters: OuiEmployeeAdapterPreview[];
   timeline: OuiTaskTimeline | null;
   selectedTaskId: string | null;
+  createCompanyName: string;
+  createCompanyCeoId: string;
+  ceoDraft: string;
   draftTitle: string;
   draftDescription: string;
   draftAgentId: string;
   onRefresh: () => void | Promise<void>;
+  onSelectCompany: (companyId: string) => void | Promise<void>;
+  onCreateCompanyNameChange: (next: string) => void;
+  onCreateCompanyCeoChange: (next: string) => void;
+  onCreateCompany: () => void | Promise<void>;
+  onCeoDraftChange: (next: string) => void;
+  onSendCeoMessage: () => void | Promise<void>;
+  onGenerateRunbookDraft: () => void | Promise<void>;
+  onStartRunbookVersion: (versionId: string) => void | Promise<void>;
   onDraftTitleChange: (next: string) => void;
   onDraftDescriptionChange: (next: string) => void;
   onDraftAgentChange: (next: string) => void;
@@ -35,6 +65,7 @@ export type OuiCompanyProps = {
   onAssignTask: (taskId: string, agentId: string) => void | Promise<void>;
   onQueueRun: (taskId: string) => void | Promise<void>;
   onReviewTransition: (taskId: string, reviewState: OuiTaskReviewState) => void | Promise<void>;
+  onOpenCeoChat: () => void;
   onOpenParallelChat: () => void;
 };
 
@@ -74,6 +105,19 @@ function agentLabel(agents: OuiAgentRecord[], agentId: string | null | undefined
   return agents.find((agent) => agent.id === agentId)?.label ?? agentId;
 }
 
+function jsonObjectString(value: unknown, fallback = ""): string {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function stageLabel(stage: Record<string, unknown>, index: number): string {
+  return (
+    jsonObjectString(stage.title) ||
+    jsonObjectString(stage.name) ||
+    jsonObjectString(stage.id) ||
+    oc("Stage {index}").replace("{index}", String(index + 1))
+  );
+}
+
 function renderMessage(props: OuiCompanyProps) {
   if (props.message) {
     return html`
@@ -97,18 +141,17 @@ function renderStatusPill(kind: string, label = kind) {
 }
 
 function renderHero(props: OuiCompanyProps) {
-  const leader = props.company?.defaultLeaderAgentId
-    ? props.agents.find((agent) => agent.id === props.company?.defaultLeaderAgentId)
-    : null;
-  const companyName =
-    props.company?.name === "OUI Company"
-      ? oc("OUI Company")
-      : (props.company?.name ?? oc("Company"));
+  const waitingCount = props.companySummaries.filter(
+    (summary) => summary.company.status === "waiting_user",
+  ).length;
+  const runningCount = props.companySummaries.filter(
+    (summary) => summary.company.status === "running",
+  ).length;
   return html`
     <section class="oui-company__hero">
       <div class="oui-company__hero-main">
         <div class="oui-company__eyebrow">OUI</div>
-        <h2>${companyName}</h2>
+        <h2>${oc("Company dashboard")}</h2>
         <div class="oui-company__hero-actions">
           <button
             class="btn btn--subtle"
@@ -127,21 +170,451 @@ function renderHero(props: OuiCompanyProps) {
       </div>
       <div class="oui-company__metrics">
         <div class="oui-company__metric">
-          <span>${oc("Leader")}</span>
-          <strong>${leader?.label ?? "OpenClaw"}</strong>
+          <span>${oc("Companies")}</span>
+          <strong>${String(props.companySummaries.length)}</strong>
         </div>
         <div class="oui-company__metric">
-          <span>${oc("Tasks")}</span>
-          <strong>${String(props.tasks.length)}</strong>
+          <span>${oc("Waiting for you")}</span>
+          <strong>${String(waitingCount)}</strong>
         </div>
         <div class="oui-company__metric">
-          <span>${oc("Runs")}</span>
-          <strong>${String(props.timeline?.runs.length ?? 0)}</strong>
+          <span>${oc("Running")}</span>
+          <strong>${String(runningCount)}</strong>
         </div>
         <div class="oui-company__metric">
           <span>${oc("OUI server")}</span>
-          <strong>${props.apiAvailable ? oc("Connected") : oc("Preview")}</strong>
+          <strong>${props.apiAvailable ? oc("Connected") : oc("Disconnected")}</strong>
         </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderCompanyDashboard(props: OuiCompanyProps) {
+  const summaries = props.companySummaries;
+  const selectedCompanyId = props.company?.id ?? null;
+  const selectedCeoId = props.createCompanyCeoId || props.ceoCandidates[0]?.id || "";
+  const canCreateCompany =
+    props.apiAvailable &&
+    !props.busy &&
+    Boolean(props.createCompanyName.trim()) &&
+    Boolean(selectedCeoId);
+  return html`
+    <section class="oui-company__dashboard">
+      <div class="oui-company__section-head">
+        <div>
+          <div class="oui-company__eyebrow">${oc("Companies")}</div>
+          <h3>${oc("Your AI companies")}</h3>
+        </div>
+      </div>
+      <div class="oui-company__company-create">
+        <label class="oui-company__field oui-company__field--company-name">
+          <span>${oc("New company")}</span>
+          <input
+            .value=${props.createCompanyName}
+            ?disabled=${props.busy || !props.apiAvailable}
+            placeholder=${oc("Company name")}
+            @input=${(event: Event) =>
+              props.onCreateCompanyNameChange((event.currentTarget as HTMLInputElement).value)}
+          />
+        </label>
+        <label class="oui-company__field">
+          <span>${oc("CEO")}</span>
+          <select
+            .value=${selectedCeoId}
+            ?disabled=${props.busy || !props.apiAvailable || !props.ceoCandidates.length}
+            @change=${(event: Event) =>
+              props.onCreateCompanyCeoChange((event.currentTarget as HTMLSelectElement).value)}
+          >
+            ${props.ceoCandidates.length
+              ? props.ceoCandidates.map(
+                  (candidate) => html`
+                    <option value=${candidate.id}>
+                      ${candidate.label}${candidate.modelRef ? ` / ${candidate.modelRef}` : ""}
+                    </option>
+                  `,
+                )
+              : html`<option value="">${oc("Connect Gateway to choose CEO")}</option>`}
+          </select>
+        </label>
+        <button
+          type="button"
+          class="btn primary oui-company__create-company-button"
+          ?disabled=${!canCreateCompany}
+          @click=${props.onCreateCompany}
+        >
+          ${icons.plus}
+          <span>${oc("Create company")}</span>
+        </button>
+      </div>
+      <div class="oui-company__company-grid">
+        ${summaries.length
+          ? repeat(
+              summaries,
+              (summary) => summary.company.id,
+              (summary) => {
+                const company = summary.company;
+                const selected = company.id === selectedCompanyId;
+                return html`
+                  <button
+                    type="button"
+                    class="oui-company__company-card ${selected
+                      ? "oui-company__company-card--selected"
+                      : ""}"
+                    ?disabled=${props.busy}
+                    @click=${() => props.onSelectCompany(company.id)}
+                  >
+                    <div class="oui-company__company-card-head">
+                      <span
+                        >${company.name === "OUI Company" ? oc("OUI Company") : company.name}</span
+                      >
+                      ${renderStatusPill(company.status, company.status)}
+                    </div>
+                    <div class="oui-company__company-line">
+                      <span>${oc("CEO")}</span>
+                      <strong>${summary.ceo?.label ?? company.ceoAgentId ?? oc("Not set")}</strong>
+                    </div>
+                    <div class="oui-company__company-objective">
+                      ${company.currentObjective ?? oc("No active objective yet.")}
+                    </div>
+                    <div class="oui-company__company-meta">
+                      <span>${oc("Stage")}: ${company.currentStage ?? oc("Idle")}</span>
+                      <span>${oc("Inbox")}: ${String(summary.openInboxCount)}</span>
+                      <span>${oc("Tasks")}: ${String(summary.taskCount)}</span>
+                      <span>${oc("Last activity")}: ${formatDate(summary.latestActivityAt)}</span>
+                    </div>
+                  </button>
+                `;
+              },
+            )
+          : html`<div class="oui-company__empty">${oc("No companies yet.")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderCompanyDetailTabs() {
+  const tabs = [
+    "Control room",
+    "CEO private chat",
+    "Inbox center",
+    "Runbooks",
+    "Organization",
+    "Artifacts",
+    "Internal records",
+    "Settings",
+  ];
+  return html`
+    <nav class="oui-company__detail-tabs" aria-label=${oc("Company sections")}>
+      ${tabs.map(
+        (tab, index) => html`
+          <a
+            class=${index === 0 ? "oui-company__detail-tab--active" : ""}
+            href="#${tab.toLowerCase().replace(/\s+/g, "-")}"
+          >
+            ${oc(tab)}
+          </a>
+        `,
+      )}
+    </nav>
+  `;
+}
+
+function renderControlRoom(props: OuiCompanyProps) {
+  const controlRoom = props.controlRoom;
+  const nodes = controlRoom?.nodes ?? [];
+  return html`
+    <section class="oui-company__band" id="control-room">
+      <div class="oui-company__section-head">
+        <div>
+          <div class="oui-company__eyebrow">${oc("Monitor")}</div>
+          <h3>${oc("Control room")}</h3>
+        </div>
+        ${renderStatusPill(props.company?.status ?? "idle", props.company?.status ?? "idle")}
+      </div>
+      <div class="oui-company__control-summary">
+        <div>
+          <span>${oc("Current objective")}</span>
+          <strong>${controlRoom?.currentObjective ?? oc("No active objective yet.")}</strong>
+        </div>
+        <div>
+          <span>${oc("Current stage")}</span>
+          <strong>${controlRoom?.currentStage ?? oc("Idle")}</strong>
+        </div>
+        <div>
+          <span>${oc("Open inbox")}</span>
+          <strong>${String(controlRoom?.openInboxItems.length ?? 0)}</strong>
+        </div>
+        <div>
+          <span>${oc("Active runbook")}</span>
+          <strong>${controlRoom?.activeRunbook?.title ?? oc("No runbook approved yet.")}</strong>
+        </div>
+      </div>
+      <div class="oui-company__next-step">
+        <span>${oc("Next step")}</span>
+        <strong
+          >${oc(
+            controlRoom?.nextStep ??
+              "Talk to the CEO and approve a runbook before the company starts work.",
+          )}</strong
+        >
+      </div>
+      <div class="oui-company__node-grid">
+        ${nodes.length
+          ? repeat(
+              nodes,
+              (node) => node.id,
+              (node) => html`
+                <article class="oui-company__node-card">
+                  <div class="oui-company__node-head">
+                    <strong>${node.title}</strong>
+                    ${renderStatusPill(node.status, node.status)}
+                  </div>
+                  <div class="oui-company__node-meta">
+                    <span>${node.assigneeLabel ?? oc("Unassigned")}</span>
+                    ${node.updatedAt ? html`<span>${formatDate(node.updatedAt)}</span>` : nothing}
+                  </div>
+                  ${node.summary
+                    ? html`<div class="oui-company__node-summary">${node.summary}</div>`
+                    : nothing}
+                </article>
+              `,
+            )
+          : html`<div class="oui-company__empty">${oc("No control-room nodes yet.")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderCeoPanel(props: OuiCompanyProps) {
+  const ceo =
+    props.agents.find((agent) => agent.id === props.company?.ceoAgentId) ??
+    props.agents.find((agent) => agent.id === props.company?.defaultLeaderAgentId) ??
+    props.agents.find((agent) => agent.isLeader) ??
+    null;
+  const canSend = props.apiAvailable && !props.busy && Boolean(props.ceoDraft.trim());
+  const canGenerateRunbook =
+    props.apiAvailable &&
+    !props.busy &&
+    props.ceoMessages.some((message) => message.role === "user");
+  return html`
+    <section class="oui-company__band" id="ceo-private-chat">
+      <div class="oui-company__section-head">
+        <div>
+          <div class="oui-company__eyebrow">CEO</div>
+          <h3>${oc("CEO private chat")}</h3>
+        </div>
+        <div class="oui-company__section-actions">
+          <button
+            class="btn btn--subtle btn--sm"
+            type="button"
+            ?disabled=${!canGenerateRunbook}
+            @click=${props.onGenerateRunbookDraft}
+          >
+            ${icons.fileText}
+            <span>${oc("Generate runbook draft")}</span>
+          </button>
+          <button class="btn btn--subtle btn--sm" type="button" @click=${props.onOpenCeoChat}>
+            ${icons.messageSquare}
+            <span>${oc("Open OUI chat")}</span>
+          </button>
+        </div>
+      </div>
+      <div class="oui-company__ceo-strip">
+        <div class="oui-company__agent-avatar">
+          ${(ceo?.label ?? "C").trim().slice(0, 1).toUpperCase() || "C"}
+        </div>
+        <div>
+          <strong>${ceo?.label ?? oc("Not set")}</strong>
+          <span>${oc("OpenClaw agent")}: ${ceo?.openclawAgentId ?? oc("Not set")}</span>
+        </div>
+      </div>
+      <div class="oui-company__ceo-chat-log">
+        ${props.ceoMessages.length
+          ? repeat(
+              props.ceoMessages,
+              (message) => message.id,
+              (message) => html`
+                <article class="oui-company__ceo-message oui-company__ceo-message--${message.role}">
+                  <div class="oui-company__ceo-message-head">
+                    <strong>${message.role === "user" ? oc("You") : oc("CEO")}</strong>
+                    <span>${formatDate(message.createdAt)}</span>
+                  </div>
+                  <p>${message.content}</p>
+                </article>
+              `,
+            )
+          : html`<div class="oui-company__empty oui-company__empty--compact">
+              ${oc("Talk with the CEO to shape company direction.")}
+            </div>`}
+      </div>
+      <div class="oui-company__ceo-composer">
+        <textarea
+          .value=${props.ceoDraft}
+          ?disabled=${props.busy || !props.apiAvailable}
+          placeholder=${oc("Tell the CEO what this company should think about next.")}
+          @input=${(event: Event) =>
+            props.onCeoDraftChange((event.currentTarget as HTMLTextAreaElement).value)}
+        ></textarea>
+        <button
+          class="btn primary"
+          type="button"
+          ?disabled=${!canSend}
+          @click=${props.onSendCeoMessage}
+        >
+          ${icons.send}
+          <span>${oc("Send to CEO")}</span>
+        </button>
+      </div>
+    </section>
+  `;
+}
+
+function renderInbox(props: OuiCompanyProps) {
+  return html`
+    <section class="oui-company__band" id="inbox-center">
+      <div class="oui-company__section-head">
+        <div>
+          <div class="oui-company__eyebrow">${oc("Inbox")}</div>
+          <h3>${oc("Inbox center")}</h3>
+        </div>
+      </div>
+      <div class="oui-company__inbox-list">
+        ${props.inboxItems.length
+          ? repeat(
+              props.inboxItems,
+              (item) => item.id,
+              (item) => html`
+                <article class="oui-company__inbox-card">
+                  <div class="oui-company__node-head">
+                    <strong>${item.title}</strong>
+                    ${renderStatusPill(item.status, item.status)}
+                  </div>
+                  <div class="oui-company__node-meta">
+                    <span>${oc(item.itemType)}</span>
+                    <span>${formatDate(item.updatedAt)}</span>
+                  </div>
+                  ${item.summary
+                    ? html`<div class="oui-company__node-summary">${item.summary}</div>`
+                    : nothing}
+                </article>
+              `,
+            )
+          : html`<div class="oui-company__empty">${oc("No inbox items.")}</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderRunbooks(props: OuiCompanyProps) {
+  const activeVersion = props.activeRunbookVersion;
+  const versions = props.runbookVersions;
+  const canStart = (version: OuiRunbookVersionRecord) =>
+    props.apiAvailable &&
+    !props.busy &&
+    !["active", "completed", "archived", "superseded"].includes(version.status);
+  const runbookTitle = (version: OuiRunbookVersionRecord) =>
+    props.runbooks.find((runbook) => runbook.id === version.runbookId)?.title ?? oc("Runbook");
+  return html`
+    <section class="oui-company__band" id="runbooks">
+      <div class="oui-company__section-head">
+        <div>
+          <div class="oui-company__eyebrow">${oc("Runbook")}</div>
+          <h3>${oc("Runbooks")}</h3>
+        </div>
+        ${activeVersion
+          ? renderStatusPill(activeVersion.status, activeVersion.status)
+          : renderStatusPill("idle", "Idle")}
+      </div>
+      ${activeVersion
+        ? html`
+            <div class="oui-company__runbook-active">
+              <div>
+                <span>${oc("Active version")}</span>
+                <strong
+                  >${ouiCompanyCopy("Version {version}", {
+                    version: activeVersion.version,
+                  })}</strong
+                >
+              </div>
+              <div>
+                <span>${oc("Mode")}</span>
+                <strong>${oc(activeVersion.operatingMode)}</strong>
+              </div>
+              <div>
+                <span>${oc("Source")}</span>
+                <strong>${oc(activeVersion.sourceType)}</strong>
+              </div>
+            </div>
+            <div class="oui-company__stage-list">
+              <span>${oc("Stages")}</span>
+              ${activeVersion.stages.length
+                ? activeVersion.stages.map(
+                    (stage, index) => html`<span>${stageLabel(stage, index)}</span>`,
+                  )
+                : html`<span>${oc("No stages yet.")}</span>`}
+            </div>
+          `
+        : html`<div class="oui-company__empty">${oc("No active runbook yet.")}</div>`}
+      <div class="oui-company__runbook-list">
+        ${versions.length
+          ? repeat(
+              versions,
+              (version) => version.id,
+              (version) => {
+                const versionNodes = props.workNodes.filter(
+                  (node) => node.runbookVersionId === version.id,
+                );
+                return html`
+                  <article class="oui-company__runbook-card">
+                    <div class="oui-company__runbook-title-row">
+                      <strong>${runbookTitle(version)}</strong>
+                      ${renderStatusPill(version.status, version.status)}
+                    </div>
+                    <div class="oui-company__node-meta">
+                      <span
+                        >${ouiCompanyCopy("Version {version}", {
+                          version: version.version,
+                        })}</span
+                      >
+                      <span>${oc("Mode")}: ${oc(version.operatingMode)}</span>
+                      <span>${oc("Updated")}: ${formatDate(version.updatedAt)}</span>
+                    </div>
+                    <p>${version.objective}</p>
+                    <div class="oui-company__stage-list">
+                      <span>${oc("Stages")}</span>
+                      ${version.stages.length
+                        ? version.stages.map(
+                            (stage, index) => html`<span>${stageLabel(stage, index)}</span>`,
+                          )
+                        : html`<span>${oc("No stages yet.")}</span>`}
+                    </div>
+                    ${versionNodes.length
+                      ? html`
+                          <div class="oui-company__stage-list">
+                            <span>${oc("Work nodes")}</span>
+                            ${versionNodes.map(
+                              (node) => html` <span>${node.title} - ${oc(node.status)}</span> `,
+                            )}
+                          </div>
+                        `
+                      : nothing}
+                    <div class="oui-company__runbook-actions">
+                      <button
+                        class="btn btn--primary btn--sm"
+                        type="button"
+                        ?disabled=${!canStart(version)}
+                        @click=${() => props.onStartRunbookVersion(version.id)}
+                      >
+                        ${icons.zap}
+                        <span>${oc("Confirm and start")}</span>
+                      </button>
+                    </div>
+                  </article>
+                `;
+              },
+            )
+          : html`<div class="oui-company__empty">${oc("No runbook drafts yet.")}</div>`}
       </div>
     </section>
   `;
@@ -191,13 +664,27 @@ function renderAdapterPreview(adapter: OuiEmployeeAdapterPreview) {
 }
 
 function renderAgents(props: OuiCompanyProps) {
+  const companyName =
+    props.company?.name === "OUI Company"
+      ? oc("OUI Company")
+      : (props.company?.name ?? oc("Company"));
   return html`
-    <section class="oui-company__band">
+    <section class="oui-company__band" id="organization">
       <div class="oui-company__section-head">
         <div>
           <div class="oui-company__eyebrow">${oc("Company")}</div>
-          <h3>${oc("OpenClaw-led agents")}</h3>
+          <h3>${companyName}</h3>
         </div>
+      </div>
+      <div class="oui-company__company-detail-strip">
+        <span
+          >${oc("CEO")}:
+          ${agentLabel(
+            props.agents,
+            props.company?.ceoAgentId ?? props.company?.defaultLeaderAgentId,
+          )}</span
+        >
+        <span>${oc("Status")}: ${ouiCompanyStatusLabel(props.company?.status ?? "unknown")}</span>
       </div>
       <div class="oui-company__agent-grid">
         ${props.agents.length
@@ -494,16 +981,31 @@ export function renderOuiCompany(props: OuiCompanyProps) {
       ${!props.loading && !props.apiAvailable
         ? html`
             <div class="oui-company__message oui-company__message--error">
-              ${oc("OUI server is not active. Company actions are preview-only.")}
+              ${oc("OUI server is not connected. Company actions require OUI server.")}
             </div>
           `
         : nothing}
-      ${renderAgents(props)}
+      ${renderCompanyDashboard(props)}
+      ${props.company
+        ? html`
+            ${renderCompanyDetailTabs()} ${renderControlRoom(props)}
+            <div class="oui-company__detail-grid">
+              ${renderCeoPanel(props)} ${renderInbox(props)} ${renderRunbooks(props)}
+            </div>
+            ${renderAgents(props)}
+          `
+        : nothing}
       <div class="oui-company__work">
         <div class="oui-company__work-main">
-          ${renderCreateTask(props)} ${renderTaskBoard(props)}
+          <div class="oui-company__section-head oui-company__internal-head" id="internal-records">
+            <div>
+              <div class="oui-company__eyebrow">${oc("Internal records")}</div>
+              <h3>${oc("Task workbench")}</h3>
+            </div>
+          </div>
+          ${props.company ? html`${renderCreateTask(props)} ${renderTaskBoard(props)}` : nothing}
         </div>
-        ${renderTimeline(props)}
+        ${props.company ? renderTimeline(props) : nothing}
       </div>
     </section>
   `;

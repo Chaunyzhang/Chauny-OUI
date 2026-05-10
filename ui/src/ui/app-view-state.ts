@@ -1,10 +1,18 @@
 import type {
   OuiAgentRecord,
   OuiCompanyRecord,
+  OuiCompanySummary,
+  OuiControlRoomReadModel,
+  OuiConversationRecord,
   OuiEmployeeAdapterPreview,
+  OuiInboxItemRecord,
+  OuiMessageRecord,
+  OuiRunbookRecord,
+  OuiRunbookVersionRecord,
   OuiTaskRecord,
   OuiTaskReviewState,
   OuiTaskTimeline,
+  OuiWorkNodeRecord,
 } from "../oui/shared/product-types.ts";
 import type { ChatSendOptions } from "./app-chat.ts";
 import type { EventLogEntry } from "./app-events.ts";
@@ -449,12 +457,25 @@ export type AppViewState = {
     ouiCompanyApiAvailable: boolean;
     ouiCompanyError: string | null;
     ouiCompanyMessage: OuiCompanyMessage | null;
+    ouiCompanySummaries: OuiCompanySummary[];
     ouiCompanyRecord: OuiCompanyRecord | null;
     ouiCompanyAgents: OuiAgentRecord[];
+    ouiCompanyCeoConversations: OuiConversationRecord[];
+    ouiCompanyCeoMessages: OuiMessageRecord[];
     ouiCompanyTasks: OuiTaskRecord[];
+    ouiCompanyRunbooks: OuiRunbookRecord[];
+    ouiCompanyRunbookVersions: OuiRunbookVersionRecord[];
+    ouiCompanyActiveRunbookVersion: OuiRunbookVersionRecord | null;
+    ouiCompanyWorkNodes: OuiWorkNodeRecord[];
+    ouiCompanyInboxItems: OuiInboxItemRecord[];
+    ouiCompanyControlRoom: OuiControlRoomReadModel | null;
     ouiCompanyAdapters: OuiEmployeeAdapterPreview[];
     ouiCompanyTimeline: OuiTaskTimeline | null;
     ouiCompanySelectedTaskId: string | null;
+    ouiCreateCompanyName: string;
+    ouiCreateCompanyCeoId: string;
+    ouiCompanyCeoDraft: string;
+    ouiCompanyCeoConversationId: string | null;
     ouiTaskDraftTitle: string;
     ouiTaskDraftDescription: string;
     ouiTaskDraftAgentId: string;
@@ -479,6 +500,11 @@ export type AppViewState = {
     applyLocalUserIdentity?: (next: { name?: string | null; avatar?: string | null }) => void;
     loadOverview: (opts?: { refresh?: boolean }) => Promise<void>;
     loadOuiCompany: () => Promise<void>;
+    selectOuiCompany: (companyId: string) => Promise<void>;
+    createOuiCompany: () => Promise<void>;
+    sendOuiCeoMessage: () => Promise<void>;
+    generateOuiCeoRunbookDraft: () => Promise<void>;
+    startOuiRunbookVersion: (versionId: string) => Promise<void>;
     createOuiTask: () => Promise<void>;
     selectOuiTask: (taskId: string) => Promise<void>;
     assignOuiTask: (taskId: string, agentId: string) => Promise<void>;

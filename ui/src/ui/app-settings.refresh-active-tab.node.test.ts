@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => ({
   loadLogsMock: vi.fn(async () => {}),
   loadModelAuthStatusStateMock: vi.fn(async () => {}),
   loadNodesMock: vi.fn(async () => {}),
+  loadOuiCompanyMock: vi.fn(async () => {}),
   loadPresenceMock: vi.fn(async () => {}),
   loadSessionsMock: vi.fn(async () => {}),
   loadSkillsMock: vi.fn(async () => {}),
@@ -107,6 +108,9 @@ vi.mock("./controllers/model-auth-status.ts", () => ({
 vi.mock("./controllers/nodes.ts", () => ({
   loadNodes: mocks.loadNodesMock,
 }));
+vi.mock("./controllers/oui-company.ts", () => ({
+  loadOuiCompany: mocks.loadOuiCompanyMock,
+}));
 vi.mock("./controllers/presence.ts", () => ({
   loadPresence: mocks.loadPresenceMock,
 }));
@@ -120,7 +124,7 @@ vi.mock("./controllers/usage.ts", () => ({
   loadUsage: mocks.loadUsageMock,
 }));
 
-import { refreshActiveTab, setTab } from "./app-settings.ts";
+import { refreshActiveTab, setTab, setTabFromRoute } from "./app-settings.ts";
 
 function createHost() {
   return {
@@ -265,6 +269,19 @@ describe("refreshActiveTab", () => {
     });
 
     sessions.resolve();
+  });
+
+  it("loads the company route even before the Gateway connects", async () => {
+    const host = createHost();
+    host.connected = false;
+    host.tab = "chat";
+
+    setTabFromRoute(host as never, "ouiCompany");
+
+    await vi.waitFor(() => {
+      expect(mocks.loadOuiCompanyMock).toHaveBeenCalledOnce();
+    });
+    expect(mocks.loadAgentsMock).toHaveBeenCalledOnce();
   });
 
   it("does not wait for secondary overview refreshes before resolving", async () => {

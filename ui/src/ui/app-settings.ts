@@ -54,6 +54,7 @@ import { isMonitoredAuthProvider } from "./model-auth-helpers.ts";
 import {
   inferBasePathFromPathname,
   isChatTab,
+  isCompanyTab,
   isOuiTab,
   normalizeBasePath,
   normalizePath,
@@ -638,7 +639,7 @@ function applyTabSelection(
   stopLogsPolling(host as unknown as Parameters<typeof stopLogsPolling>[0]);
   stopDebugPolling(host as unknown as Parameters<typeof stopDebugPolling>[0]);
 
-  if (options.refreshPolicy === "always" || host.connected) {
+  if (options.refreshPolicy === "always" || host.connected || isCompanyTab(next)) {
     void refreshActiveTab(host);
   }
 
@@ -648,7 +649,7 @@ function applyTabSelection(
 }
 
 function syncNavigationModeForTab(host: SettingsHost, next: Tab) {
-  const desired = isOuiTab(next) ? "oui" : "original";
+  const desired = isCompanyTab(next) ? "company" : isOuiTab(next) ? "oui" : "original";
   if ((host.settings.navigationMode ?? "oui") === desired) {
     return;
   }

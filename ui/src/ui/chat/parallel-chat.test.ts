@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createOuiTaskFromParallelPane,
-  ouiOpenClawAgentRecordId,
   type OuiCompanyUiState,
 } from "../controllers/oui-company.ts";
 import type { GatewayBrowserClient } from "../gateway.ts";
@@ -118,20 +117,45 @@ describe("parallel chat", () => {
     host.chatParallelPanes[0].chatMessage = "Draft a release plan";
 
     const company = {
-      id: "default",
-      name: "OUI Company",
-      defaultLeaderAgentId: ouiOpenClawAgentRecordId("alpha"),
+      id: "company_1",
+      name: "Product Company",
+      description: null,
+      mode: "project" as const,
+      status: "idle" as const,
+      ceoAgentId: "ceo_1",
+      defaultLeaderAgentId: "ceo_1",
+      currentRunbookVersionId: null,
+      currentObjective: null,
+      currentStage: null,
+      autonomyPolicy: {},
+      reportingPreference: {},
       createdAt: "2026-05-10T00:00:00.000Z",
       updatedAt: "2026-05-10T00:00:00.000Z",
     };
+    const ceo = {
+      id: "ceo_1",
+      companyId: "company_1",
+      adapterId: "openclaw-local",
+      adapterKind: "openclaw" as const,
+      label: "Alpha",
+      roleId: null,
+      reportsToAgentId: null,
+      openclawAgentId: "alpha",
+      modelRef: null,
+      status: "active" as const,
+      isLeader: true,
+      config: {},
+      createdAt: company.createdAt,
+      updatedAt: company.updatedAt,
+    };
     const task = {
       id: "task-1",
-      companyId: "default",
+      companyId: "company_1",
       title: "Draft a release plan",
       description: "Created from four-pane 1: agent:alpha:main:parallel-1",
       status: "ready",
       reviewState: "none",
-      assignedAgentId: ouiOpenClawAgentRecordId("alpha"),
+      assignedAgentId: "ceo_1",
       createdBy: null,
       priority: 0,
       createdAt: company.createdAt,
@@ -139,17 +163,11 @@ describe("parallel chat", () => {
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith("/api/oui/companies/default") && init?.method === "POST") {
-        return Response.json({ company, leader: null });
-      }
-      if (url.endsWith("/api/oui/companies/default") && !init?.method) {
-        return Response.json({ company, agents: [], tasks: [] });
-      }
-      if (url.endsWith("/api/oui/companies/default/agents") && init?.method === "POST") {
-        return Response.json({ agent: null }, { status: 201 });
-      }
-      if (url.endsWith("/api/oui/companies/default/tasks") && init?.method === "POST") {
+      if (url.endsWith("/api/oui/companies/company_1/tasks") && init?.method === "POST") {
         return Response.json({ task }, { status: 201 });
+      }
+      if (url.endsWith("/api/oui/companies/company_1")) {
+        return Response.json({ company, agents: [ceo], tasks: [task] });
       }
       if (url.endsWith("/api/oui/tasks/task-1/timeline")) {
         return Response.json({
@@ -168,15 +186,37 @@ describe("parallel chat", () => {
           ...host,
           ouiCompanyLoading: false,
           ouiCompanyBusy: false,
-          ouiCompanyApiAvailable: false,
+          ouiCompanyApiAvailable: true,
           ouiCompanyError: null,
           ouiCompanyMessage: null,
-          ouiCompanyRecord: null,
-          ouiCompanyAgents: [],
+          ouiCompanySummaries: [
+            {
+              company,
+              ceo,
+              taskCount: 0,
+              openInboxCount: 0,
+              activeRunbook: null,
+              latestActivityAt: company.updatedAt,
+            },
+          ],
+          ouiCompanyRecord: company,
+          ouiCompanyAgents: [ceo],
+          ouiCompanyCeoConversations: [],
+          ouiCompanyCeoMessages: [],
           ouiCompanyTasks: [],
+          ouiCompanyRunbooks: [],
+          ouiCompanyRunbookVersions: [],
+          ouiCompanyActiveRunbookVersion: null,
+          ouiCompanyWorkNodes: [],
+          ouiCompanyInboxItems: [],
+          ouiCompanyControlRoom: null,
           ouiCompanyAdapters: [],
           ouiCompanyTimeline: null,
           ouiCompanySelectedTaskId: null,
+          ouiCreateCompanyName: "",
+          ouiCreateCompanyCeoId: "",
+          ouiCompanyCeoDraft: "",
+          ouiCompanyCeoConversationId: null,
           ouiTaskDraftTitle: "",
           ouiTaskDraftDescription: "",
           ouiTaskDraftAgentId: "",
@@ -188,7 +228,7 @@ describe("parallel chat", () => {
     }
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/oui/companies/default/tasks",
+      "/api/oui/companies/company_1/tasks",
       expect.objectContaining({ method: "POST" }),
     );
     expect(client.request).not.toHaveBeenCalledWith("chat.send", expect.anything());

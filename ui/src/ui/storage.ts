@@ -75,7 +75,7 @@ export type UiSettings = {
   locale?: string;
 };
 
-export type UiNavigationMode = "oui" | "original";
+export type UiNavigationMode = "company" | "oui" | "original";
 export type { LocalUserIdentity } from "./user-identity.ts";
 
 function isViteDevPage(): boolean {
@@ -195,7 +195,7 @@ function persistSessionToken(gatewayUrl: string, token: string) {
 }
 
 function parseNavigationMode(value: unknown): UiNavigationMode {
-  return value === "oui" || value === "original" ? value : "oui";
+  return value === "company" || value === "oui" || value === "original" ? value : "oui";
 }
 
 export function loadSettings(): UiSettings {

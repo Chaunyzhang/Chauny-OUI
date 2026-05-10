@@ -28,6 +28,7 @@ type Tab =
   | "infrastructure"
   | "aiAgents"
   | "ouiChat"
+  | "ouiCompany"
   | "setupWizard"
   | "modelManager"
   | "agentManager"
@@ -41,7 +42,7 @@ type SettingsHost = {
     token: string;
     sessionKey: string;
     lastActiveSessionKey: string;
-    navigationMode: "oui" | "original";
+    navigationMode: "company" | "oui" | "original";
     theme: ThemeName;
     themeMode: ThemeMode;
     chatFocusMode: boolean;
@@ -281,8 +282,11 @@ describe("setTabFromRoute", () => {
     expect(host.debugPollInterval).toBeNull();
   });
 
-  it("keeps OUI routes in OUI mode and original routes in original mode", () => {
+  it("keeps company, OUI, and original routes in their navigation modes", () => {
     const host = createHost("chat");
+
+    setTabFromRoute(host, "ouiCompany");
+    expect(host.settings.navigationMode).toBe("company");
 
     setTabFromRoute(host, "ouiChat");
     expect(host.settings.navigationMode).toBe("oui");

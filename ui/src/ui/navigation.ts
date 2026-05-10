@@ -242,12 +242,15 @@ export function isChatTab(tab: Tab): boolean {
 export function isOuiTab(tab: Tab): boolean {
   return (
     tab === "ouiOverview" ||
-    tab === "ouiCompany" ||
     tab === "ouiChat" ||
     tab === "setupWizard" ||
     tab === "modelManager" ||
     tab === "agentManager"
   );
+}
+
+export function isCompanyTab(tab: Tab): boolean {
+  return tab === "ouiCompany";
 }
 
 export function titleForTab(tab: Tab) {

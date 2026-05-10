@@ -56,9 +56,14 @@ afterEach(() => {
 describe("OuiCompanyService", () => {
   it("queues ready tasks through the OpenClaw leader and builds a timeline", async () => {
     const { productStore, runStore } = createStores();
-    await productStore.ensureDefaultCompany({
-      companyId: "company_1",
-      openclawLeader: { id: "leader_1" },
+    await productStore.createCompany({
+      id: "company_1",
+      name: "Test Company",
+      openclawCeo: {
+        id: "leader_1",
+        label: "Lead",
+        openclawAgentId: "main",
+      },
     });
     await productStore.createTask({
       id: "task_1",

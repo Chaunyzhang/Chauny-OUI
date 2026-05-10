@@ -106,6 +106,7 @@ import {
 } from "./controllers/exec-approvals.ts";
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
+import { resolveOuiCompanyCeoCandidates } from "./controllers/oui-company.ts";
 import { loadPresence } from "./controllers/presence.ts";
 import {
   branchSessionFromCheckpoint,
@@ -146,18 +147,20 @@ import {
   normalizeBasePath,
   TAB_GROUPS,
   isChatTab,
+  isCompanyTab,
   isOuiTab,
   subtitleForTab,
   titleForTab,
   type Tab,
 } from "./navigation.ts";
+import { ouiCompanyCopy } from "./oui-company-copy.ts";
 import { isPluginEnabledInConfigSnapshot } from "./plugin-activation.ts";
+import "./components/dashboard-header.ts";
 import {
   buildAgentMainSessionKey,
   parseAgentSessionKey,
   resolveAgentIdFromSessionKey,
 } from "./session-key.ts";
-import "./components/dashboard-header.ts";
 import { loadLocalAssistantIdentity, type UiNavigationMode } from "./storage.ts";
 import { normalizeOptionalString } from "./string-coerce.ts";
 import type { AgentsCreateResult, AgentsDeleteResult } from "./types.ts";
@@ -608,6 +611,12 @@ function selectNavigationMode(state: AppViewState, mode: UiNavigationMode) {
   if (resolveNavigationMode(state) !== mode) {
     state.applySettings({ ...state.settings, navigationMode: mode });
   }
+  if (mode === "company") {
+    state.aiAgentsActiveSection = "agents";
+    state.aiAgentsActiveSubsection = null;
+    state.setTab("ouiCompany");
+    return;
+  }
   if (mode === "oui") {
     state.aiAgentsActiveSection = "agents";
     state.aiAgentsActiveSubsection = null;
@@ -620,12 +629,19 @@ function selectNavigationMode(state: AppViewState, mode: UiNavigationMode) {
     state.aiAgentsActiveSection = "models";
     state.aiAgentsActiveSubsection = null;
     state.setTab(nextTab);
+    return;
+  }
+  if (isCompanyTab(state.tab)) {
+    state.aiAgentsActiveSection = "models";
+    state.aiAgentsActiveSubsection = null;
+    state.setTab("aiAgents");
   }
 }
 
 function renderNavigationModeSwitch(state: AppViewState, collapsed: boolean) {
   const mode = resolveNavigationMode(state);
   const options: Array<{ id: UiNavigationMode; label: string }> = [
+    { id: "company", label: ouiCompanyCopy("Company") },
     { id: "oui", label: localizeConfigCopy("OUI") },
     { id: "original", label: localizeConfigCopy("Original") },
   ];
@@ -705,10 +721,24 @@ function renderOuiNavigation(state: AppViewState, collapsed: boolean) {
       <div class="nav-section__items">
         ${renderTab(state, "ouiOverview", { collapsed })}
         ${renderTab(state, "ouiChat", { collapsed })}
-        ${renderTab(state, "ouiCompany", { collapsed })}
         ${renderTab(state, "modelManager", { collapsed })}
         ${renderTab(state, "agentManager", { collapsed })}
       </div>
+    </section>
+  `;
+}
+
+function renderCompanyNavigation(state: AppViewState, collapsed: boolean) {
+  return html`
+    <section class="nav-section">
+      ${!collapsed
+        ? html`
+            <div class="nav-section__heading">
+              <span class="nav-section__label-text">${ouiCompanyCopy("Company")}</span>
+            </div>
+          `
+        : nothing}
+      <div class="nav-section__items">${renderTab(state, "ouiCompany", { collapsed })}</div>
     </section>
   `;
 }
@@ -1098,7 +1128,7 @@ export function renderApp(state: AppViewState) {
     })();
   };
   const basePath = normalizeBasePath(state.basePath ?? "");
-  const isOuiNavigationMode = resolveNavigationMode(state) === "oui";
+  const isOuiNavigationMode = resolveNavigationMode(state) !== "original";
   const brandLogoSrc = isOuiNavigationMode ? ouiLogoUrl(basePath) : agentLogoUrl(basePath);
   const resolveSelectedAgentId = () =>
     state.agentsSelectedId ??
@@ -1648,16 +1678,43 @@ export function renderApp(state: AppViewState) {
       apiAvailable: state.ouiCompanyApiAvailable,
       error: state.ouiCompanyError,
       message: state.ouiCompanyMessage,
+      companySummaries: state.ouiCompanySummaries,
       company: state.ouiCompanyRecord,
+      ceoCandidates: resolveOuiCompanyCeoCandidates(state.agentsList),
       agents: state.ouiCompanyAgents,
+      ceoConversations: state.ouiCompanyCeoConversations,
+      ceoMessages: state.ouiCompanyCeoMessages,
       tasks: state.ouiCompanyTasks,
+      runbooks: state.ouiCompanyRunbooks,
+      runbookVersions: state.ouiCompanyRunbookVersions,
+      activeRunbookVersion: state.ouiCompanyActiveRunbookVersion,
+      workNodes: state.ouiCompanyWorkNodes,
+      inboxItems: state.ouiCompanyInboxItems,
+      controlRoom: state.ouiCompanyControlRoom,
       adapters: state.ouiCompanyAdapters,
       timeline: state.ouiCompanyTimeline,
       selectedTaskId: state.ouiCompanySelectedTaskId,
+      createCompanyName: state.ouiCreateCompanyName,
+      createCompanyCeoId: state.ouiCreateCompanyCeoId,
+      ceoDraft: state.ouiCompanyCeoDraft,
       draftTitle: state.ouiTaskDraftTitle,
       draftDescription: state.ouiTaskDraftDescription,
       draftAgentId: state.ouiTaskDraftAgentId,
       onRefresh: () => state.loadOuiCompany(),
+      onSelectCompany: (companyId) => state.selectOuiCompany(companyId),
+      onCreateCompanyNameChange: (next) => {
+        state.ouiCreateCompanyName = next;
+      },
+      onCreateCompanyCeoChange: (next) => {
+        state.ouiCreateCompanyCeoId = next;
+      },
+      onCreateCompany: () => state.createOuiCompany(),
+      onCeoDraftChange: (next) => {
+        state.ouiCompanyCeoDraft = next;
+      },
+      onSendCeoMessage: () => state.sendOuiCeoMessage(),
+      onGenerateRunbookDraft: () => state.generateOuiCeoRunbookDraft(),
+      onStartRunbookVersion: (versionId) => state.startOuiRunbookVersion(versionId),
       onDraftTitleChange: (next) => {
         state.ouiTaskDraftTitle = next;
       },
@@ -1673,6 +1730,7 @@ export function renderApp(state: AppViewState) {
       onQueueRun: (taskId) => state.queueOuiTaskRun(taskId),
       onReviewTransition: (taskId, reviewState) =>
         state.transitionOuiTaskReview(taskId, reviewState),
+      onOpenCeoChat: () => state.setTab("ouiChat"),
       onOpenParallelChat: () => state.setTab("ouiChat"),
     });
   const applyQuickModelSetup = async () => {
@@ -2167,7 +2225,11 @@ export function renderApp(state: AppViewState) {
               .basePath=${state.basePath}
               .agentLabel=${dashboardHeaderContext.agentLabel}
               @navigate=${(event: CustomEvent<Tab>) => {
-                if (resolveNavigationMode(state) === "oui" && !isOuiTab(event.detail)) {
+                if (
+                  resolveNavigationMode(state) !== "original" &&
+                  !isOuiTab(event.detail) &&
+                  !isCompanyTab(event.detail)
+                ) {
                   state.applySettings({ ...state.settings, navigationMode: "original" });
                 }
                 state.setTab(event.detail);
@@ -2231,9 +2293,11 @@ export function renderApp(state: AppViewState) {
             ${renderNavigationModeSwitch(state, navCollapsed)}
             <div class="sidebar-shell__body">
               <nav class="sidebar-nav">
-                ${resolveNavigationMode(state) === "oui"
-                  ? renderOuiNavigation(state, navCollapsed)
-                  : renderOriginalNavigation(state, navCollapsed)}
+                ${resolveNavigationMode(state) === "company"
+                  ? renderCompanyNavigation(state, navCollapsed)
+                  : resolveNavigationMode(state) === "oui"
+                    ? renderOuiNavigation(state, navCollapsed)
+                    : renderOriginalNavigation(state, navCollapsed)}
               </nav>
             </div>
             <div class="sidebar-shell__footer">
