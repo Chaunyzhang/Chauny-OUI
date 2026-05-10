@@ -1,6 +1,7 @@
 import { t } from "../i18n/index.ts";
 import { localizeConfigCopy } from "../i18n/lib/config-copy.ts";
 import type { IconName } from "./icons.js";
+import { ouiCompanyCopy } from "./oui-company-copy.ts";
 import { normalizeLowercaseStringOrEmpty } from "./string-coerce.ts";
 
 export const TAB_GROUPS = [
@@ -257,7 +258,7 @@ export function titleForTab(tab: Tab) {
     return t("tabs.chat");
   }
   if (tab === "ouiCompany") {
-    return localizeConfigCopy("Company");
+    return ouiCompanyCopy("Company");
   }
   if (tab === "setupWizard") {
     return localizeConfigCopy("Setup Wizard");
@@ -279,7 +280,7 @@ export function subtitleForTab(tab: Tab) {
     return t("subtitles.chat");
   }
   if (tab === "ouiCompany") {
-    return localizeConfigCopy("Company, tasks, and run timeline");
+    return ouiCompanyCopy("Company, tasks, and run timeline");
   }
   if (tab === "setupWizard") {
     return localizeConfigCopy("Configure model plans and chat apps");

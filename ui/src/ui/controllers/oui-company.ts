@@ -7,6 +7,7 @@ import type {
   OuiTaskTimeline,
 } from "../../oui/shared/product-types.ts";
 import type { ParallelChatPane } from "../chat/parallel-chat.ts";
+import { formatOuiCompanyError, ouiCompanyCopy } from "../oui-company-copy.ts";
 import { normalizeAgentId } from "../session-key.ts";
 import type { AgentsListResult, GatewayAgentRow } from "../types.ts";
 
@@ -64,7 +65,7 @@ function optionalString(value: unknown): string | null {
 }
 
 function formatError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return formatOuiCompanyError(error);
 }
 
 async function readResponseJson(response: Response): Promise<unknown> {
@@ -288,7 +289,7 @@ export async function loadOuiCompany(state: OuiCompanyUiState) {
 export async function createOuiTask(state: OuiCompanyUiState) {
   const title = state.ouiTaskDraftTitle.trim();
   if (!title) {
-    state.ouiCompanyMessage = { kind: "error", text: "Task title is required." };
+    state.ouiCompanyMessage = { kind: "error", text: ouiCompanyCopy("Task title is required.") };
     markChanged(state);
     return;
   }
@@ -310,7 +311,10 @@ export async function createOuiTask(state: OuiCompanyUiState) {
       state.ouiCompanySelectedTaskId = task.id;
       state.ouiTaskDraftTitle = "";
       state.ouiTaskDraftDescription = "";
-      state.ouiCompanyMessage = { kind: "success", text: `Task created: ${task.title}` };
+      state.ouiCompanyMessage = {
+        kind: "success",
+        text: ouiCompanyCopy("Task created: {title}", { title: task.title }),
+      };
     }
     await reloadCompany(state, companyId);
     if (state.ouiCompanySelectedTaskId) {
@@ -368,8 +372,8 @@ export async function queueOuiTaskRun(state: OuiCompanyUiState, taskId: string) 
       kind: result.status === "queued" ? "success" : "error",
       text:
         result.status === "queued"
-          ? `Run queued: ${result.run?.id ?? "pending"}`
-          : "Task is blocked.",
+          ? ouiCompanyCopy("Run queued: {runId}", { runId: result.run?.id ?? "pending" })
+          : ouiCompanyCopy("Task is blocked."),
     };
     await reloadCompany(state, state.ouiCompanyRecord?.id ?? DEFAULT_COMPANY_ID);
     await loadOuiTaskTimeline(state, taskId, { silent: true });
@@ -440,7 +444,7 @@ export async function createOuiTaskFromParallelPane(state: OuiCompanyUiState, pa
     await reloadCompany(state);
     const company = state.ouiCompanyRecord;
     if (!company) {
-      throw new Error("OUI company is unavailable.");
+      throw new Error(ouiCompanyCopy("OUI company is unavailable."));
     }
     const row =
       state.agentsList?.agents.find(
@@ -449,12 +453,17 @@ export async function createOuiTaskFromParallelPane(state: OuiCompanyUiState, pa
     await syncOpenClawAgent(company.id, row, company.defaultLeaderAgentId);
     await reloadCompany(state, company.id);
     const assignedAgentId = ouiOpenClawAgentRecordId(pane.agentId);
-    const title = pane.chatMessage.trim() || `Follow up with ${agentRowLabel(row, pane.agentId)}`;
+    const title =
+      pane.chatMessage.trim() ||
+      ouiCompanyCopy("Follow up with {agent}", { agent: agentRowLabel(row, pane.agentId) });
     const body = await fetchJson<TaskBody>(`/companies/${encodeURIComponent(company.id)}/tasks`, {
       method: "POST",
       body: JSON.stringify({
         title,
-        description: `Created from four-pane ${pane.index + 1}: ${pane.sessionKey}`,
+        description: ouiCompanyCopy("Created from four-pane {index}: {session}", {
+          index: pane.index + 1,
+          session: pane.sessionKey,
+        }),
         assignedAgentId,
       }),
     });
@@ -462,7 +471,7 @@ export async function createOuiTaskFromParallelPane(state: OuiCompanyUiState, pa
       state.ouiCompanySelectedTaskId = body.task.id;
       state.ouiCompanyMessage = {
         kind: "success",
-        text: `Task created from pane ${pane.index + 1}.`,
+        text: ouiCompanyCopy("Task created from pane {index}.", { index: pane.index + 1 }),
       };
     }
     await reloadCompany(state, company.id);

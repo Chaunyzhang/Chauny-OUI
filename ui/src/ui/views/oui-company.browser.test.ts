@@ -1,10 +1,16 @@
 import { render } from "lit";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { i18n } from "../../i18n/index.ts";
+import { formatOuiCompanyError } from "../oui-company-copy.ts";
 import { renderOuiCompany } from "./oui-company.ts";
 
 const now = "2026-05-10T00:00:00.000Z";
 
 describe("OUI company view", () => {
+  beforeEach(async () => {
+    await i18n.setLocale("en");
+  });
+
   it("renders company, task board, disabled employees, and run timeline", async () => {
     const onCreateTask = vi.fn();
     const onQueueRun = vi.fn();
@@ -130,5 +136,68 @@ describe("OUI company view", () => {
     );
     runButton?.click();
     expect(onQueueRun).toHaveBeenCalledWith("task-1");
+  });
+
+  it("uses Chinese copy for the OUI company preview state", async () => {
+    await i18n.setLocale("zh-CN");
+    const container = document.createElement("div");
+    const apiError = formatOuiCompanyError(new Error("OUI API request failed: 404"));
+
+    render(
+      renderOuiCompany({
+        loading: false,
+        busy: false,
+        apiAvailable: false,
+        error: apiError,
+        message: null,
+        company: { id: "default", name: "OUI Company", defaultLeaderAgentId: "openclaw-main" },
+        agents: [
+          {
+            id: "openclaw-main",
+            companyId: "default",
+            adapterId: "openclaw-local",
+            adapterKind: "openclaw",
+            label: "main",
+            roleId: null,
+            reportsToAgentId: null,
+            openclawAgentId: "main",
+            modelRef: null,
+            status: "active",
+            isLeader: true,
+            config: {},
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        adapters: [],
+        tasks: [],
+        timeline: null,
+        selectedTaskId: null,
+        draftTitle: "",
+        draftDescription: "",
+        draftAgentId: "",
+        onRefresh: vi.fn(),
+        onDraftTitleChange: vi.fn(),
+        onDraftDescriptionChange: vi.fn(),
+        onDraftAgentChange: vi.fn(),
+        onCreateTask: vi.fn(),
+        onSelectTask: vi.fn(),
+        onAssignTask: vi.fn(),
+        onQueueRun: vi.fn(),
+        onReviewTransition: vi.fn(),
+        onOpenParallelChat: vi.fn(),
+      }),
+      container,
+    );
+    await Promise.resolve();
+
+    expect(container.textContent).toContain("OUI 公司");
+    expect(container.textContent).toContain("四宫格聊天");
+    expect(container.textContent).toContain(
+      "OUI 后端 API 未启动或未挂载（HTTP 404）。当前仅预览，创建/运行任务已禁用。",
+    );
+    expect(container.textContent).toContain("OUI 后端未启动，公司操作当前是预览模式。");
+    expect(container.textContent).toContain("创建工作");
+    expect(container.textContent).not.toContain("Company actions are preview-only");
   });
 });

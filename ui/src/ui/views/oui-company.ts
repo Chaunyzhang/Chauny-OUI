@@ -1,6 +1,5 @@
 import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
-import { localizeConfigCopy } from "../../i18n/lib/config-copy.ts";
 import type {
   OuiAgentRecord,
   OuiEmployeeAdapterPreview,
@@ -10,6 +9,7 @@ import type {
 } from "../../oui/shared/product-types.ts";
 import type { OuiCompanyMessage } from "../controllers/oui-company.ts";
 import { icons } from "../icons.ts";
+import { ouiCompanyCopy, ouiCompanyStatusLabel } from "../oui-company-copy.ts";
 
 export type OuiCompanyProps = {
   loading: boolean;
@@ -53,7 +53,7 @@ const TASK_COLUMNS: TaskColumn[] = [
 ];
 
 function oc(text: string): string {
-  return localizeConfigCopy(text);
+  return ouiCompanyCopy(text);
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -89,18 +89,26 @@ function renderMessage(props: OuiCompanyProps) {
 }
 
 function renderStatusPill(kind: string, label = kind) {
-  return html`<span class="oui-company__pill oui-company__pill--${kind}">${label}</span>`;
+  return html`
+    <span class="oui-company__pill oui-company__pill--${kind}">
+      ${ouiCompanyStatusLabel(label)}
+    </span>
+  `;
 }
 
 function renderHero(props: OuiCompanyProps) {
   const leader = props.company?.defaultLeaderAgentId
     ? props.agents.find((agent) => agent.id === props.company?.defaultLeaderAgentId)
     : null;
+  const companyName =
+    props.company?.name === "OUI Company"
+      ? oc("OUI Company")
+      : (props.company?.name ?? oc("Company"));
   return html`
     <section class="oui-company__hero">
       <div class="oui-company__hero-main">
         <div class="oui-company__eyebrow">OUI</div>
-        <h2>${props.company?.name ?? oc("Company")}</h2>
+        <h2>${companyName}</h2>
         <div class="oui-company__hero-actions">
           <button
             class="btn btn--subtle"
@@ -176,7 +184,7 @@ function renderAdapterPreview(adapter: OuiEmployeeAdapterPreview) {
         )}
       </div>
       ${adapter.reason
-        ? html`<div class="oui-company__adapter-reason">${adapter.reason}</div>`
+        ? html`<div class="oui-company__adapter-reason">${oc(adapter.reason)}</div>`
         : nothing}
     </article>
   `;
