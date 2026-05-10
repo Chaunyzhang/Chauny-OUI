@@ -45,6 +45,7 @@ import {
 import { loadModels } from "./controllers/models.ts";
 import { loadNodes, type NodesState } from "./controllers/nodes.ts";
 import { loadOuiCompany, type OuiCompanyUiState } from "./controllers/oui-company.ts";
+import { loadOuiMeetings, type OuiMeetingRoomUiState } from "./controllers/oui-meeting-room.ts";
 import { loadPresence, type PresenceState } from "./controllers/presence.ts";
 import { loadSessions, type SessionsState } from "./controllers/sessions.ts";
 import { loadSkills, type SkillsState } from "./controllers/skills.ts";
@@ -140,6 +141,7 @@ type SettingsAppHost = SettingsHost &
   SkillsState &
   ModelAuthStatusState &
   OuiCompanyUiState &
+  OuiMeetingRoomUiState &
   UsageState & {
     overviewLogCursor: number | null;
     overviewLogLines: string[];
@@ -395,6 +397,10 @@ export async function refreshActiveTab(host: SettingsHost) {
       case "ouiCompany":
         await loadAgents(app);
         await loadOuiCompany(app);
+        break;
+      case "ouiMeetingRoom":
+        await loadAgents(app);
+        await loadOuiMeetings(app);
         break;
       case "setupWizard":
         await loadConfigSchema(app);

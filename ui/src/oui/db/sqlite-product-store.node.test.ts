@@ -361,6 +361,100 @@ describe("OuiSqliteProductStore runbooks and inbox", () => {
     await expect(store.listWorkNodes("company_2")).resolves.toEqual([]);
   });
 
+  it("completes work nodes, saves artifacts, and advances the runbook", async () => {
+    const store = createStore();
+    await store.createCompany({
+      id: "company_1",
+      name: "OUI Product Company",
+      openclawCeo: {
+        id: "ceo_1",
+        label: "CEO",
+        openclawAgentId: "main",
+      },
+      now: new Date("2026-05-10T00:00:00.000Z"),
+    });
+    await store.createRunbookDraft({
+      id: "runbook_1",
+      versionId: "runbook_1_v1",
+      companyId: "company_1",
+      title: "Build company system",
+      sourceType: "ceo_chat",
+      objective: "Turn OUI into an agent company system.",
+      stages: [
+        { id: "plan", title: "Plan product shape" },
+        { id: "build", title: "Build monitored slice" },
+      ],
+      now: new Date("2026-05-10T00:01:00.000Z"),
+    });
+
+    const started = await store.startRunbookVersion(
+      "runbook_1_v1",
+      "user",
+      new Date("2026-05-10T00:02:00.000Z"),
+    );
+    expect(started.workNodes.map((node) => [node.title, node.status])).toEqual([
+      ["Plan product shape", "ready"],
+      ["Build monitored slice", "pending"],
+    ]);
+
+    const first = await store.completeWorkNode({
+      nodeId: started.workNodes[0].id,
+      completedBy: "owner",
+      summary: "Plan is accepted.",
+      output: { decision: "continue" },
+      now: new Date("2026-05-10T00:03:00.000Z"),
+    });
+    expect(first.node).toMatchObject({ title: "Plan product shape", status: "done" });
+    expect(first.nextNode).toMatchObject({ title: "Build monitored slice", status: "ready" });
+    expect(first.artifact).toMatchObject({
+      companyId: "company_1",
+      kind: "stage_output",
+      title: "Plan product shape output",
+      summary: "Plan is accepted.",
+    });
+    expect(first.artifact.content).toMatchObject({
+      decision: "continue",
+      nodeId: started.workNodes[0].id,
+      stageId: "plan",
+    });
+    expect(await store.getCompany("company_1")).toMatchObject({
+      status: "running",
+      currentStage: "Build monitored slice",
+    });
+
+    const repeatedFirst = await store.completeWorkNode({
+      nodeId: started.workNodes[0].id,
+      completedBy: "owner",
+      summary: "Plan remains accepted.",
+      output: { decision: "continue" },
+      now: new Date("2026-05-10T00:03:30.000Z"),
+    });
+    expect(repeatedFirst.nextNode).toMatchObject({
+      title: "Build monitored slice",
+      status: "ready",
+    });
+    expect(repeatedFirst.company).toMatchObject({
+      status: "running",
+      currentStage: "Build monitored slice",
+    });
+    expect(repeatedFirst.runbook).toMatchObject({ status: "active" });
+    expect(await store.listArtifacts({ companyId: "company_1" })).toHaveLength(1);
+
+    const second = await store.completeWorkNode({
+      nodeId: first.nextNode?.id ?? "",
+      completedBy: "owner",
+      summary: "Build slice is done.",
+      now: new Date("2026-05-10T00:04:00.000Z"),
+    });
+    expect(second.nextNode).toBeNull();
+    expect(second.company).toMatchObject({ status: "idle", currentStage: "Completed" });
+    expect(second.runbook).toMatchObject({ status: "completed" });
+    expect(second.version).toMatchObject({ status: "completed" });
+    expect(
+      (await store.listArtifacts({ companyId: "company_1" })).map((item) => item.kind),
+    ).toEqual(["stage_output", "stage_output"]);
+  });
+
   it("keeps inbox items inside one company and resolves them", async () => {
     const store = createStore();
     await store.createCompany({
@@ -408,6 +502,81 @@ describe("OuiSqliteProductStore runbooks and inbox", () => {
       resolution: { action: "reply", responseText: "Continue, but report risks first." },
     });
     expect(await store.listInboxItems("company_1", "open")).toEqual([]);
+  });
+});
+
+describe("OuiSqliteProductStore meetings and artifacts", () => {
+  it("keeps meeting room records global and stores minutes artifacts", async () => {
+    const store = createStore();
+
+    const meeting = await store.createMeeting({
+      id: "meeting_1",
+      title: "Discuss company strategy",
+      objective: "Compare product options.",
+      participants: [
+        {
+          id: "main",
+          label: "Main",
+          adapterKind: "openclaw",
+          adapterId: "openclaw-local",
+          openclawAgentId: "main",
+        },
+      ],
+      now: new Date("2026-05-10T00:00:00.000Z"),
+    });
+    expect(meeting).toMatchObject({
+      id: "meeting_1",
+      status: "draft",
+      participants: [expect.objectContaining({ adapterKind: "openclaw" })],
+    });
+
+    await store.updateMeetingStatus({
+      meetingId: "meeting_1",
+      status: "active",
+      now: new Date("2026-05-10T00:01:00.000Z"),
+    });
+    await store.appendMeetingMessage({
+      id: "message_owner",
+      meetingId: "meeting_1",
+      role: "owner",
+      content: "What should we build first?",
+      now: new Date("2026-05-10T00:02:00.000Z"),
+    });
+    await store.appendMeetingMessage({
+      id: "message_main",
+      meetingId: "meeting_1",
+      role: "participant",
+      participantId: "main",
+      content: "Start with the control room.",
+      now: new Date("2026-05-10T00:03:00.000Z"),
+    });
+    const artifact = await store.createArtifact({
+      id: "meeting_1_minutes",
+      meetingId: "meeting_1",
+      kind: "meeting_minutes",
+      title: "Discuss company strategy minutes",
+      contentType: "text/markdown",
+      content: { path: "meetings/meeting_1.md" },
+      metadata: { source: "meeting_room" },
+      now: new Date("2026-05-10T00:04:00.000Z"),
+    });
+    await store.updateMeetingStatus({
+      meetingId: "meeting_1",
+      status: "ended",
+      minutesArtifactId: artifact.id,
+      now: new Date("2026-05-10T00:05:00.000Z"),
+    });
+
+    expect((await store.listMeetings())[0]).toMatchObject({
+      id: "meeting_1",
+      status: "ended",
+      minutesArtifactId: "meeting_1_minutes",
+    });
+    expect((await store.listMeetingMessages("meeting_1")).map((message) => message.id)).toEqual([
+      "message_owner",
+      "message_main",
+    ]);
+    expect(await store.listArtifacts({ meetingId: "meeting_1" })).toEqual([artifact]);
   });
 });
 

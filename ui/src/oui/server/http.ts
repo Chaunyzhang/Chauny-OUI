@@ -1,10 +1,14 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
+import * as path from "node:path";
 import type { OuiAdapterRegistry } from "../adapters/registry.ts";
 import { evaluateAdapterExecutionPolicy } from "../security/adapter-policy.ts";
 import { createDefaultOuiFeatureFlags } from "../shared/feature-flags.ts";
 import type {
   OuiAgentRecord,
+  OuiArtifactKind,
+  OuiArtifactRecord,
   OuiCompanyDetail,
   OuiCompanyRecord,
   OuiCompanySummary,
@@ -14,6 +18,9 @@ import type {
   OuiInboxResolutionAction,
   OuiInboxItemStatus,
   OuiInboxItemType,
+  OuiMeetingMessageRecord,
+  OuiMeetingParticipant,
+  OuiMeetingRecord,
   OuiMessageRecord,
   OuiProductStore,
   OuiRunbookKind,
@@ -41,6 +48,7 @@ export type OuiHttpServerOptions = {
   flags?: Partial<OuiFeatureFlags>;
   authToken?: string;
   adapterAllowlist?: ReadonlySet<string> | string[];
+  artifactRoot?: string;
 };
 
 export type OuiHttpServer = {
@@ -149,6 +157,14 @@ function optionalString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function safePathSegment(value: string): string {
+  const safe = value
+    .trim()
+    .replace(/[^a-zA-Z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return safe || "artifact";
+}
+
 const RUNBOOK_SOURCE_TYPES = new Set<OuiRunbookSourceType>([
   "ceo_chat",
   "meeting_minutes",
@@ -179,6 +195,17 @@ const INBOX_RESOLUTION_ACTIONS = new Set<OuiInboxResolutionAction>([
   "reject",
   "stop",
   "reply",
+]);
+
+const ARTIFACT_KINDS = new Set<OuiArtifactKind>([
+  "runbook",
+  "meeting_minutes",
+  "report",
+  "document",
+  "code_patch",
+  "media",
+  "dataset",
+  "stage_output",
 ]);
 
 function requireProductStore(productStore: OuiProductStore | undefined, res: ServerResponse) {
@@ -282,6 +309,107 @@ function stageSummary(stage: OuiJsonObject): string | null {
   return null;
 }
 
+function asMeetingParticipants(value: unknown): OuiMeetingParticipant[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const participants: OuiMeetingParticipant[] = [];
+  for (const entry of value) {
+    const record = asObject(entry);
+    const id = optionalString(record.id);
+    const label = optionalString(record.label);
+    const adapterKind = optionalString(record.adapterKind);
+    if (!id || !label || !adapterKind) {
+      continue;
+    }
+    participants.push({
+      id,
+      label,
+      adapterKind: adapterKind as OuiMeetingParticipant["adapterKind"],
+      adapterId: optionalString(record.adapterId),
+      agentId: optionalString(record.agentId),
+      openclawAgentId: optionalString(record.openclawAgentId),
+      modelRef: optionalString(record.modelRef),
+      role: optionalString(record.role),
+    });
+  }
+  return participants;
+}
+
+function formatMeetingMinutes(input: {
+  meeting: OuiMeetingRecord;
+  messages: OuiMeetingMessageRecord[];
+}): string {
+  const lines = [
+    `# ${input.meeting.title}`,
+    "",
+    `- Status: ${input.meeting.status}`,
+    input.meeting.objective ? `- Objective: ${input.meeting.objective}` : null,
+    `- Created: ${input.meeting.createdAt}`,
+    input.meeting.startedAt ? `- Started: ${input.meeting.startedAt}` : null,
+    input.meeting.endedAt ? `- Ended: ${input.meeting.endedAt}` : null,
+    "",
+    "## Participants",
+    "",
+    ...(input.meeting.participants.length
+      ? input.meeting.participants.map(
+          (participant) =>
+            `- ${participant.label} (${participant.adapterKind}${participant.modelRef ? ` / ${participant.modelRef}` : ""})`,
+        )
+      : ["- No participants recorded."]),
+    "",
+    "## Transcript",
+    "",
+    ...(input.messages.length
+      ? input.messages.flatMap((message) => {
+          const participant = input.meeting.participants.find(
+            (entry) => entry.id === message.participantId,
+          );
+          const speaker =
+            message.role === "owner"
+              ? "Owner"
+              : (participant?.label ?? (message.role === "system" ? "System" : "Participant"));
+          return [`### ${speaker} - ${message.createdAt}`, "", message.content, ""];
+        })
+      : ["No messages recorded.", ""]),
+  ].filter((line): line is string => line != null);
+  return `${lines.join("\n")}\n`;
+}
+
+async function createMeetingMinutesArtifact(input: {
+  productStore: OuiProductStore;
+  artifactRoot: string;
+  meetingId: string;
+}): Promise<OuiArtifactRecord> {
+  const meeting = await input.productStore.getMeeting(input.meetingId);
+  if (!meeting) {
+    throw new Error(`OUI meeting not found: ${input.meetingId}`);
+  }
+  const messages = await input.productStore.listMeetingMessages(meeting.id);
+  const markdown = formatMeetingMinutes({ meeting, messages });
+  const directory = path.join(input.artifactRoot, "meeting-minutes");
+  await mkdir(directory, { recursive: true });
+  const filePath = path.join(directory, `${safePathSegment(meeting.id)}.md`);
+  await writeFile(filePath, markdown, "utf8");
+  const artifact = await input.productStore.createArtifact({
+    id: `${meeting.id}:minutes`,
+    meetingId: meeting.id,
+    kind: "meeting_minutes",
+    title: `${meeting.title} minutes`,
+    summary: meeting.objective,
+    path: filePath,
+    contentType: "text/markdown",
+    content: { markdown },
+    metadata: { source: "meeting_room", messageCount: messages.length },
+  });
+  await input.productStore.updateMeetingStatus({
+    meetingId: meeting.id,
+    status: "ended",
+    minutesArtifactId: artifact.id,
+  });
+  return artifact;
+}
+
 function workNodeStatusToControlNodeStatus(
   status: OuiWorkNodeRecord["status"],
 ): OuiControlRoomNode["status"] {
@@ -378,8 +506,10 @@ function buildControlRoomReadModel(input: {
   activeVersion: OuiRunbookVersionRecord | null;
   workNodes: OuiWorkNodeRecord[];
   inboxItems: Awaited<ReturnType<OuiProductStore["listInboxItems"]>>;
+  artifacts: OuiArtifactRecord[];
 }): OuiControlRoomReadModel {
-  const { company, agents, tasks, runbooks, activeVersion, workNodes, inboxItems } = input;
+  const { company, agents, tasks, runbooks, activeVersion, workNodes, inboxItems, artifacts } =
+    input;
   const openInboxItems = inboxItems.filter((item) => item.status === "open");
   const activeRunbook = resolveActiveRunbook(company, runbooks, activeVersion);
   const nodes = buildControlRoomNodes(company, agents, activeVersion, workNodes);
@@ -404,12 +534,14 @@ function buildControlRoomReadModel(input: {
       company.status === "running" && !openInboxItems.length && !nodes.length
         ? "Watch current stage and wait for the next CEO report."
         : nextStep,
+    artifactCount: artifacts.length,
     updatedAt: newestTimestamp([
       company.updatedAt,
       ...tasks.map((task) => task.updatedAt),
       ...runbooks.map((runbook) => runbook.updatedAt),
       ...workNodes.map((node) => node.updatedAt),
       ...inboxItems.map((item) => item.updatedAt),
+      ...artifacts.map((artifact) => artifact.updatedAt),
       ...(activeVersion ? [activeVersion.updatedAt] : []),
     ]),
   };
@@ -423,16 +555,25 @@ async function getCompanyDetail(
   if (!company) {
     return null;
   }
-  const [agents, ceoConversations, tasks, runbooks, runbookVersions, workNodes, inboxItems] =
-    await Promise.all([
-      productStore.listAgents(companyId),
-      productStore.listCeoConversations(companyId),
-      productStore.listTasks(companyId),
-      productStore.listRunbooks(companyId),
-      productStore.listRunbookVersions(companyId),
-      productStore.listWorkNodes(companyId),
-      productStore.listInboxItems(companyId),
-    ]);
+  const [
+    agents,
+    ceoConversations,
+    tasks,
+    runbooks,
+    runbookVersions,
+    workNodes,
+    inboxItems,
+    artifacts,
+  ] = await Promise.all([
+    productStore.listAgents(companyId),
+    productStore.listCeoConversations(companyId),
+    productStore.listTasks(companyId),
+    productStore.listRunbooks(companyId),
+    productStore.listRunbookVersions(companyId),
+    productStore.listWorkNodes(companyId),
+    productStore.listInboxItems(companyId),
+    productStore.listArtifacts({ companyId }),
+  ]);
   const ceoMessages = ceoConversations[0]
     ? await productStore.listConversationMessages(ceoConversations[0].id, 50)
     : [];
@@ -454,6 +595,7 @@ async function getCompanyDetail(
     activeRunbookVersion,
     workNodes,
     inboxItems,
+    artifacts,
     controlRoom: buildControlRoomReadModel({
       company,
       agents,
@@ -462,6 +604,7 @@ async function getCompanyDetail(
       activeVersion: activeRunbookVersion,
       workNodes: activeWorkNodes,
       inboxItems,
+      artifacts,
     }),
   };
 }
@@ -481,6 +624,7 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
       : null);
   const ceoService =
     options.ceoService ?? (options.productStore ? new OuiCeoService(options.productStore) : null);
+  const artifactRoot = options.artifactRoot ?? path.join(process.cwd(), ".artifacts", "oui");
   const handle: OuiHttpRequestHandler = async (req, res) => {
     try {
       if (!isAuthorized(req, options.authToken)) {
@@ -516,6 +660,220 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
           return;
         }
         sendJson(res, 200, { adapters: service.listEmployeeAdapterPreviews() });
+        return;
+      }
+
+      if (url.pathname === "/api/oui/artifacts") {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        if (req.method === "GET") {
+          sendJson(res, 200, {
+            artifacts: await productStore.listArtifacts({
+              companyId: optionalString(url.searchParams.get("companyId")),
+              meetingId: optionalString(url.searchParams.get("meetingId")),
+              runId: optionalString(url.searchParams.get("runId")),
+            }),
+          });
+          return;
+        }
+        if (req.method === "POST") {
+          const body = asObject(await readRequestBody(req));
+          const kind = ARTIFACT_KINDS.has(body.kind as OuiArtifactKind)
+            ? (body.kind as OuiArtifactKind)
+            : null;
+          if (!kind || typeof body.title !== "string") {
+            sendJson(res, 400, { error: "invalid_artifact_input" });
+            return;
+          }
+          const artifact = await productStore.createArtifact({
+            id: optionalString(body.id) ?? undefined,
+            companyId: optionalString(body.companyId),
+            meetingId: optionalString(body.meetingId),
+            runId: optionalString(body.runId),
+            kind,
+            title: body.title,
+            summary: optionalString(body.summary),
+            path: optionalString(body.path),
+            contentType: optionalString(body.contentType) ?? undefined,
+            content: asObject(body.content),
+            metadata: asObject(body.metadata),
+          });
+          sendJson(res, 201, { artifact });
+          return;
+        }
+        sendJson(res, 405, { error: "method_not_allowed" });
+        return;
+      }
+
+      if (url.pathname === "/api/oui/meetings") {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        if (req.method === "GET") {
+          sendJson(res, 200, { meetings: await productStore.listMeetings() });
+          return;
+        }
+        if (req.method === "POST") {
+          const body = asObject(await readRequestBody(req));
+          if (typeof body.title !== "string") {
+            sendJson(res, 400, { error: "invalid_meeting_input" });
+            return;
+          }
+          const meeting = await productStore.createMeeting({
+            id: optionalString(body.id) ?? undefined,
+            title: body.title,
+            objective: optionalString(body.objective),
+            participants: asMeetingParticipants(body.participants),
+          });
+          sendJson(res, 201, { meeting });
+          return;
+        }
+        sendJson(res, 405, { error: "method_not_allowed" });
+        return;
+      }
+
+      const meetingMatch = /^\/api\/oui\/meetings\/([^/]+)$/.exec(url.pathname);
+      if (req.method === "GET" && meetingMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const meetingId = decodeURIComponent(meetingMatch[1]);
+        const meeting = await productStore.getMeeting(meetingId);
+        if (!meeting) {
+          sendJson(res, 404, { error: "not_found" });
+          return;
+        }
+        sendJson(res, 200, {
+          meeting,
+          messages: await productStore.listMeetingMessages(meetingId),
+          artifacts: await productStore.listArtifacts({ meetingId }),
+        });
+        return;
+      }
+
+      const meetingStatusMatch = /^\/api\/oui\/meetings\/([^/]+)\/(start|end)$/.exec(url.pathname);
+      if (req.method === "POST" && meetingStatusMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const meeting = await productStore.updateMeetingStatus({
+          meetingId: decodeURIComponent(meetingStatusMatch[1]),
+          status: meetingStatusMatch[2] === "start" ? "active" : "ended",
+        });
+        sendJson(res, 200, { meeting });
+        return;
+      }
+
+      const meetingMessagesMatch = /^\/api\/oui\/meetings\/([^/]+)\/messages$/.exec(url.pathname);
+      if (meetingMessagesMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const meetingId = decodeURIComponent(meetingMessagesMatch[1]);
+        if (req.method === "GET") {
+          sendJson(res, 200, {
+            messages: await productStore.listMeetingMessages(meetingId),
+          });
+          return;
+        }
+        if (req.method === "POST") {
+          const body = asObject(await readRequestBody(req));
+          const role =
+            body.role === "participant" || body.role === "system" || body.role === "owner"
+              ? body.role
+              : "owner";
+          const content = optionalString(body.content);
+          if (!content) {
+            sendJson(res, 400, { error: "invalid_meeting_message_input" });
+            return;
+          }
+          const message = await productStore.appendMeetingMessage({
+            id: optionalString(body.id) ?? undefined,
+            meetingId,
+            role,
+            participantId: optionalString(body.participantId),
+            content,
+            metadata: asObject(body.metadata),
+          });
+          sendJson(res, 201, { message });
+          return;
+        }
+        sendJson(res, 405, { error: "method_not_allowed" });
+        return;
+      }
+
+      const meetingTurnMatch = /^\/api\/oui\/meetings\/([^/]+)\/turn$/.exec(url.pathname);
+      if (req.method === "POST" && meetingTurnMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const meetingId = decodeURIComponent(meetingTurnMatch[1]);
+        const meeting = await productStore.getMeeting(meetingId);
+        if (!meeting) {
+          sendJson(res, 404, { error: "not_found" });
+          return;
+        }
+        const body = asObject(await readRequestBody(req));
+        const prompt = optionalString(body.prompt);
+        if (!prompt) {
+          sendJson(res, 400, { error: "invalid_meeting_turn_input" });
+          return;
+        }
+        if (meeting.status === "draft") {
+          await productStore.updateMeetingStatus({ meetingId, status: "active" });
+        }
+        const ownerMessage = await productStore.appendMeetingMessage({
+          meetingId,
+          role: "owner",
+          content: prompt,
+          metadata: { source: "meeting_turn" },
+        });
+        const participantMessages: OuiMeetingMessageRecord[] = [];
+        for (const participant of meeting.participants) {
+          participantMessages.push(
+            await productStore.appendMeetingMessage({
+              meetingId,
+              role: "participant",
+              participantId: participant.id,
+              content: `${participant.label} has recorded this agenda item for discussion. Adapter execution remains capability-gated.`,
+              metadata: {
+                source: "meeting_turn_preview",
+                adapterKind: participant.adapterKind,
+                execution: "preview_disabled",
+              },
+            }),
+          );
+        }
+        sendJson(res, 201, {
+          ownerMessage,
+          participantMessages,
+          meeting: await productStore.getMeeting(meetingId),
+        });
+        return;
+      }
+
+      const meetingMinutesMatch = /^\/api\/oui\/meetings\/([^/]+)\/minutes$/.exec(url.pathname);
+      if (req.method === "POST" && meetingMinutesMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const artifact = await createMeetingMinutesArtifact({
+          productStore,
+          artifactRoot,
+          meetingId: decodeURIComponent(meetingMinutesMatch[1]),
+        });
+        sendJson(res, 201, {
+          artifact,
+          meeting: await productStore.getMeeting(decodeURIComponent(meetingMinutesMatch[1])),
+        });
         return;
       }
 
@@ -803,6 +1161,23 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
         return;
       }
 
+      const companyArtifactsMatch = /^\/api\/oui\/companies\/([^/]+)\/artifacts$/.exec(
+        url.pathname,
+      );
+      if (req.method === "GET" && companyArtifactsMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const companyId = decodeURIComponent(companyArtifactsMatch[1]);
+        if (!(await productStore.getCompany(companyId))) {
+          sendJson(res, 404, { error: "not_found" });
+          return;
+        }
+        sendJson(res, 200, { artifacts: await productStore.listArtifacts({ companyId }) });
+        return;
+      }
+
       const companyAgentsMatch = /^\/api\/oui\/companies\/([^/]+)\/agents$/.exec(url.pathname);
       if (companyAgentsMatch) {
         const productStore = requireProductStore(options.productStore, res);
@@ -876,6 +1251,30 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
           decodeURIComponent(startRunbookMatch[1]),
           optionalString(body.startedBy) ?? "user",
         );
+        const detail = await getCompanyDetail(productStore, result.company.id);
+        sendJson(res, 200, {
+          ...result,
+          detail,
+          controlRoom: detail?.controlRoom ?? null,
+        });
+        return;
+      }
+
+      const completeWorkNodeMatch = /^\/api\/oui\/work-nodes\/([^/]+)\/complete$/.exec(
+        url.pathname,
+      );
+      if (req.method === "POST" && completeWorkNodeMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const body = asObject(await readRequestBody(req));
+        const result = await productStore.completeWorkNode({
+          nodeId: decodeURIComponent(completeWorkNodeMatch[1]),
+          completedBy: optionalString(body.completedBy) ?? "user",
+          summary: optionalString(body.summary),
+          output: asObject(body.output),
+        });
         const detail = await getCompanyDetail(productStore, result.company.id);
         sendJson(res, 200, {
           ...result,

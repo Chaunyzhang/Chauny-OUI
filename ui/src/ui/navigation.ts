@@ -30,6 +30,7 @@ export type Tab =
   | "agents"
   | "ouiOverview"
   | "ouiCompany"
+  | "ouiMeetingRoom"
   | "overview"
   | "channels"
   | "instances"
@@ -57,6 +58,7 @@ const TAB_PATHS: Record<Tab, string> = {
   agents: "/agents",
   ouiOverview: "/oui/overview",
   ouiCompany: "/oui/company",
+  ouiMeetingRoom: "/oui/meetings",
   overview: "/overview",
   channels: "/channels",
   instances: "/instances",
@@ -93,6 +95,9 @@ const PATH_ALIASES: Record<string, Tab> = {
   "/agents-manager": "agentManager",
   "/company": "ouiCompany",
   "/oui-company": "ouiCompany",
+  "/meetings": "ouiMeetingRoom",
+  "/meeting-room": "ouiMeetingRoom",
+  "/oui-meetings": "ouiMeetingRoom",
 };
 
 const PATH_TO_TAB = new Map<string, Tab>([
@@ -186,6 +191,7 @@ export function iconForTab(tab: Tab): IconName {
     case "ouiOverview":
       return "barChart";
     case "ouiCompany":
+    case "ouiMeetingRoom":
       return "folder";
     case "chat":
     case "ouiChat":
@@ -250,7 +256,7 @@ export function isOuiTab(tab: Tab): boolean {
 }
 
 export function isCompanyTab(tab: Tab): boolean {
-  return tab === "ouiCompany";
+  return tab === "ouiCompany" || tab === "ouiMeetingRoom";
 }
 
 export function titleForTab(tab: Tab) {
@@ -262,6 +268,9 @@ export function titleForTab(tab: Tab) {
   }
   if (tab === "ouiCompany") {
     return ouiCompanyCopy("Company");
+  }
+  if (tab === "ouiMeetingRoom") {
+    return ouiCompanyCopy("Meeting room");
   }
   if (tab === "setupWizard") {
     return localizeConfigCopy("Setup Wizard");
@@ -284,6 +293,9 @@ export function subtitleForTab(tab: Tab) {
   }
   if (tab === "ouiCompany") {
     return ouiCompanyCopy("Company, tasks, and run timeline");
+  }
+  if (tab === "ouiMeetingRoom") {
+    return ouiCompanyCopy("Global free-agent meetings");
   }
   if (tab === "setupWizard") {
     return localizeConfigCopy("Configure model plans and chat apps");

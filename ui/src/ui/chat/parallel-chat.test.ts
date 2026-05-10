@@ -209,6 +209,7 @@ describe("parallel chat", () => {
           ouiCompanyActiveRunbookVersion: null,
           ouiCompanyWorkNodes: [],
           ouiCompanyInboxItems: [],
+          ouiCompanyArtifacts: [],
           ouiCompanyControlRoom: null,
           ouiCompanyAdapters: [],
           ouiCompanyTimeline: null,

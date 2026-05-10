@@ -410,7 +410,8 @@
 
 .oui-company__node-grid,
 .oui-company__inbox-list,
-.oui-company__runbook-list {
+.oui-company__runbook-list,
+.oui-company__artifact-list {
   display: grid;
   gap: 10px;
 }
@@ -421,10 +422,18 @@
 
 .oui-company__node-card,
 .oui-company__inbox-card,
-.oui-company__runbook-card {
+.oui-company__runbook-card,
+.oui-company__artifact-card {
   display: grid;
   gap: 10px;
   padding: 12px;
+}
+
+.oui-company__artifact-card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
 }
 
 .oui-company__node-head {
@@ -517,6 +526,20 @@
   border-color: color-mix(in srgb, var(--success) 30%, var(--border));
 }
 
+.oui-company__ceo-message--owner {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+}
+
+.oui-company__ceo-message--agent,
+.oui-company__ceo-message--participant {
+  border-color: color-mix(in srgb, var(--success) 30%, var(--border));
+}
+
+.oui-company__ceo-message--system {
+  border-color: color-mix(in srgb, var(--warning, #f7b955) 30%, var(--border));
+  background: color-mix(in srgb, var(--warning, #f7b955) 7%, var(--bg-elevated));
+}
+
 .oui-company__ceo-message-head {
   display: flex;
   justify-content: space-between;
@@ -561,10 +584,41 @@
 }
 
 .oui-company__adapter-reason,
-.oui-company__task-description {
+.oui-company__task-description,
+.oui-company__muted {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.oui-company__inbox-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.oui-company__node-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.oui-company__meeting-create {
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 0.9fr) auto;
+}
+
+.oui-company__meeting-draft-participants {
+  min-height: 32px;
+}
+
+.oui-company__meeting-log {
+  max-height: 420px;
+}
+
+.oui-company__meeting-participants {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 .oui-company__pill {

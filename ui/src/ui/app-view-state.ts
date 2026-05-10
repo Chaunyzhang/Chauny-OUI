@@ -1,11 +1,15 @@
 import type {
   OuiAgentRecord,
+  OuiArtifactRecord,
   OuiCompanyRecord,
   OuiCompanySummary,
   OuiControlRoomReadModel,
   OuiConversationRecord,
   OuiEmployeeAdapterPreview,
+  OuiInboxResolutionAction,
   OuiInboxItemRecord,
+  OuiMeetingMessageRecord,
+  OuiMeetingRecord,
   OuiMessageRecord,
   OuiRunbookRecord,
   OuiRunbookVersionRecord,
@@ -26,6 +30,7 @@ import type { DevicePairingList } from "./controllers/devices.ts";
 import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
 import type { OuiCompanyMessage } from "./controllers/oui-company.ts";
+import type { OuiMeetingRoomMessage } from "./controllers/oui-meeting-room.ts";
 import type {
   ClawHubSearchResult,
   ClawHubSkillDetail,
@@ -468,6 +473,7 @@ export type AppViewState = {
     ouiCompanyActiveRunbookVersion: OuiRunbookVersionRecord | null;
     ouiCompanyWorkNodes: OuiWorkNodeRecord[];
     ouiCompanyInboxItems: OuiInboxItemRecord[];
+    ouiCompanyArtifacts: OuiArtifactRecord[];
     ouiCompanyControlRoom: OuiControlRoomReadModel | null;
     ouiCompanyAdapters: OuiEmployeeAdapterPreview[];
     ouiCompanyTimeline: OuiTaskTimeline | null;
@@ -479,6 +485,19 @@ export type AppViewState = {
     ouiTaskDraftTitle: string;
     ouiTaskDraftDescription: string;
     ouiTaskDraftAgentId: string;
+    ouiMeetingLoading: boolean;
+    ouiMeetingBusy: boolean;
+    ouiMeetingError: string | null;
+    ouiMeetingMessage: OuiMeetingRoomMessage | null;
+    ouiMeetings: OuiMeetingRecord[];
+    ouiSelectedMeetingId: string | null;
+    ouiMeetingMessages: OuiMeetingMessageRecord[];
+    ouiMeetingArtifacts: OuiArtifactRecord[];
+    ouiMeetingTitleDraft: string;
+    ouiMeetingObjectiveDraft: string;
+    ouiMeetingParticipantDraftId: string;
+    ouiMeetingDraftParticipantIds: string[];
+    ouiMeetingPromptDraft: string;
     client: GatewayBrowserClient | null;
     refreshSessionsAfterChat: Set<string>;
     connect: () => void;
@@ -505,12 +524,27 @@ export type AppViewState = {
     sendOuiCeoMessage: () => Promise<void>;
     generateOuiCeoRunbookDraft: () => Promise<void>;
     startOuiRunbookVersion: (versionId: string) => Promise<void>;
+    resolveOuiInboxItem: (
+      itemId: string,
+      action: OuiInboxResolutionAction,
+      responseText?: string | null,
+    ) => Promise<void>;
+    completeOuiWorkNode: (nodeId: string) => Promise<void>;
     createOuiTask: () => Promise<void>;
     selectOuiTask: (taskId: string) => Promise<void>;
     assignOuiTask: (taskId: string, agentId: string) => Promise<void>;
     queueOuiTaskRun: (taskId: string) => Promise<void>;
     transitionOuiTaskReview: (taskId: string, reviewState: OuiTaskReviewState) => Promise<void>;
     createOuiTaskFromParallelPane: (paneId: string) => Promise<void>;
+    loadOuiMeetings: () => Promise<void>;
+    selectOuiMeeting: (meetingId: string) => Promise<void>;
+    addOuiMeetingDraftParticipant: () => void;
+    removeOuiMeetingDraftParticipant: (participantId: string) => void;
+    createOuiMeeting: () => Promise<void>;
+    startOuiMeeting: (meetingId: string) => Promise<void>;
+    endOuiMeeting: (meetingId: string) => Promise<void>;
+    sendOuiMeetingTurn: () => Promise<void>;
+    generateOuiMeetingMinutes: (meetingId: string) => Promise<void>;
     loadAssistantIdentity: () => Promise<void>;
     loadCron: () => Promise<void>;
     handleWhatsAppStart: (force: boolean) => Promise<void>;

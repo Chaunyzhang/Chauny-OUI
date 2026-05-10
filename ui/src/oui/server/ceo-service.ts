@@ -271,6 +271,8 @@ export class OuiCeoService {
     text: string;
     now?: Date;
   }): Promise<OuiCeoMessageResult> {
+    const now = input.now ?? new Date();
+    const assistantNow = new Date(now.getTime() + 1);
     const company = await this.productStore.getCompany(input.companyId);
     if (!company) {
       throw new Error(`OUI company not found: ${input.companyId}`);
@@ -285,7 +287,7 @@ export class OuiCeoService {
       companyId: input.companyId,
       ceoAgentId: ceo.id,
       title: truncate(input.text, 80),
-      now: input.now,
+      now,
     });
     const userMessage = await this.productStore.appendConversationMessage({
       conversationId: conversation.id,
@@ -293,7 +295,7 @@ export class OuiCeoService {
       role: "user",
       content: input.text,
       metadata: { source: "owner" },
-      now: input.now,
+      now,
     });
     const context = await this.buildContext(input.companyId, conversation.id);
     const assistantMessage = await this.productStore.appendConversationMessage({
@@ -311,7 +313,7 @@ export class OuiCeoService {
         openclawDispatch: "feature_gated",
         note: "P1 stores company-scoped CEO context without starting work.",
       },
-      now: input.now,
+      now: assistantNow,
     });
     return {
       conversation: await this.productStore.getOrCreateCeoConversation({

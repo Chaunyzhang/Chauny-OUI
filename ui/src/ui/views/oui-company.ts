@@ -2,11 +2,13 @@ import { html, nothing } from "lit";
 import { repeat } from "lit/directives/repeat.js";
 import type {
   OuiAgentRecord,
+  OuiArtifactRecord,
   OuiCompanyRecord,
   OuiCompanySummary,
   OuiControlRoomReadModel,
   OuiConversationRecord,
   OuiEmployeeAdapterPreview,
+  OuiInboxResolutionAction,
   OuiInboxItemRecord,
   OuiMessageRecord,
   OuiRunbookRecord,
@@ -38,6 +40,7 @@ export type OuiCompanyProps = {
   activeRunbookVersion: OuiRunbookVersionRecord | null;
   workNodes: OuiWorkNodeRecord[];
   inboxItems: OuiInboxItemRecord[];
+  artifacts: OuiArtifactRecord[];
   controlRoom: OuiControlRoomReadModel | null;
   adapters: OuiEmployeeAdapterPreview[];
   timeline: OuiTaskTimeline | null;
@@ -57,6 +60,12 @@ export type OuiCompanyProps = {
   onSendCeoMessage: () => void | Promise<void>;
   onGenerateRunbookDraft: () => void | Promise<void>;
   onStartRunbookVersion: (versionId: string) => void | Promise<void>;
+  onCompleteWorkNode: (nodeId: string) => void | Promise<void>;
+  onResolveInboxItem: (
+    itemId: string,
+    action: OuiInboxResolutionAction,
+    responseText?: string | null,
+  ) => void | Promise<void>;
   onDraftTitleChange: (next: string) => void;
   onDraftDescriptionChange: (next: string) => void;
   onDraftAgentChange: (next: string) => void;
@@ -323,6 +332,7 @@ function renderCompanyDetailTabs() {
 function renderControlRoom(props: OuiCompanyProps) {
   const controlRoom = props.controlRoom;
   const nodes = controlRoom?.nodes ?? [];
+  const artifacts = props.artifacts ?? [];
   return html`
     <section class="oui-company__band" id="control-room">
       <div class="oui-company__section-head">
@@ -339,11 +349,15 @@ function renderControlRoom(props: OuiCompanyProps) {
         </div>
         <div>
           <span>${oc("Current stage")}</span>
-          <strong>${controlRoom?.currentStage ?? oc("Idle")}</strong>
+          <strong>${oc(controlRoom?.currentStage ?? "Idle")}</strong>
         </div>
         <div>
           <span>${oc("Open inbox")}</span>
           <strong>${String(controlRoom?.openInboxItems.length ?? 0)}</strong>
+        </div>
+        <div>
+          <span>${oc("Artifacts")}</span>
+          <strong>${String(controlRoom?.artifactCount ?? artifacts.length)}</strong>
         </div>
         <div>
           <span>${oc("Active runbook")}</span>
@@ -376,6 +390,21 @@ function renderControlRoom(props: OuiCompanyProps) {
                   </div>
                   ${node.summary
                     ? html`<div class="oui-company__node-summary">${node.summary}</div>`
+                    : nothing}
+                  ${node.sourceStatus === "ready" || node.sourceStatus === "running"
+                    ? html`
+                        <div class="oui-company__node-actions">
+                          <button
+                            class="btn btn--sm btn--subtle"
+                            type="button"
+                            ?disabled=${props.busy || !props.apiAvailable}
+                            @click=${() => props.onCompleteWorkNode(node.id)}
+                          >
+                            ${icons.check}
+                            <span>${oc("Save output")}</span>
+                          </button>
+                        </div>
+                      `
                     : nothing}
                 </article>
               `,
@@ -471,6 +500,63 @@ function renderCeoPanel(props: OuiCompanyProps) {
 }
 
 function renderInbox(props: OuiCompanyProps) {
+  const openItems = props.inboxItems.filter((item) => item.status === "open");
+  const handledItems = props.inboxItems.filter((item) => item.status !== "open");
+  const renderInboxCard = (item: OuiInboxItemRecord) => html`
+    <article class="oui-company__inbox-card">
+      <div class="oui-company__node-head">
+        <strong>${item.title}</strong>
+        ${renderStatusPill(item.status, item.status)}
+      </div>
+      <div class="oui-company__node-meta">
+        <span>${oc(item.itemType)}</span>
+        <span>${formatDate(item.updatedAt)}</span>
+      </div>
+      ${item.summary ? html`<div class="oui-company__node-summary">${item.summary}</div>` : nothing}
+      ${item.status === "open"
+        ? html`
+            <div class="oui-company__inbox-actions">
+              <button
+                class="btn btn--sm btn--subtle"
+                type="button"
+                ?disabled=${props.busy}
+                @click=${() => props.onResolveInboxItem(item.id, "approve")}
+              >
+                ${icons.check}
+                <span>${oc("Approve")}</span>
+              </button>
+              <button
+                class="btn btn--sm btn--subtle"
+                type="button"
+                ?disabled=${props.busy}
+                @click=${() => props.onResolveInboxItem(item.id, "reply", oc("Continue"))}
+              >
+                ${icons.cornerDownRight}
+                <span>${oc("Reply")}</span>
+              </button>
+              <button
+                class="btn btn--sm btn--subtle"
+                type="button"
+                ?disabled=${props.busy}
+                @click=${() => props.onResolveInboxItem(item.id, "reject")}
+              >
+                ${icons.x}
+                <span>${oc("Reject")}</span>
+              </button>
+              <button
+                class="btn btn--sm btn--subtle"
+                type="button"
+                ?disabled=${props.busy}
+                @click=${() => props.onResolveInboxItem(item.id, "stop")}
+              >
+                ${icons.stop}
+                <span>${oc("Stop")}</span>
+              </button>
+            </div>
+          `
+        : nothing}
+    </article>
+  `;
   return html`
     <section class="oui-company__band" id="inbox-center">
       <div class="oui-company__section-head">
@@ -480,26 +566,11 @@ function renderInbox(props: OuiCompanyProps) {
         </div>
       </div>
       <div class="oui-company__inbox-list">
-        ${props.inboxItems.length
-          ? repeat(
-              props.inboxItems,
-              (item) => item.id,
-              (item) => html`
-                <article class="oui-company__inbox-card">
-                  <div class="oui-company__node-head">
-                    <strong>${item.title}</strong>
-                    ${renderStatusPill(item.status, item.status)}
-                  </div>
-                  <div class="oui-company__node-meta">
-                    <span>${oc(item.itemType)}</span>
-                    <span>${formatDate(item.updatedAt)}</span>
-                  </div>
-                  ${item.summary
-                    ? html`<div class="oui-company__node-summary">${item.summary}</div>`
-                    : nothing}
-                </article>
-              `,
-            )
+        ${openItems.length || handledItems.length
+          ? html`
+              ${repeat(openItems, (item) => item.id, renderInboxCard)}
+              ${repeat(handledItems.slice(0, 3), (item) => item.id, renderInboxCard)}
+            `
           : html`<div class="oui-company__empty">${oc("No inbox items.")}</div>`}
       </div>
     </section>
@@ -691,6 +762,44 @@ function renderAgents(props: OuiCompanyProps) {
           ? repeat(props.agents, (agent) => agent.id, renderAgentCard)
           : html`<div class="oui-company__empty">${oc("No agents yet.")}</div>`}
         ${repeat(props.adapters, (adapter) => adapter.adapterId, renderAdapterPreview)}
+      </div>
+    </section>
+  `;
+}
+
+function renderArtifacts(props: OuiCompanyProps) {
+  const artifacts = props.artifacts ?? [];
+  return html`
+    <section class="oui-company__band" id="artifacts">
+      <div class="oui-company__section-head">
+        <div>
+          <div class="oui-company__eyebrow">${oc("Artifacts")}</div>
+          <h3>${oc("Artifact repository")}</h3>
+        </div>
+      </div>
+      <div class="oui-company__artifact-list">
+        ${artifacts.length
+          ? repeat(
+              artifacts,
+              (artifact) => artifact.id,
+              (artifact) => html`
+                <article class="oui-company__artifact-card">
+                  <div class="oui-company__node-head">
+                    <strong>${artifact.title}</strong>
+                    ${renderStatusPill(artifact.kind, artifact.kind)}
+                  </div>
+                  <div class="oui-company__node-meta">
+                    <span>${artifact.contentType}</span>
+                    <span>${formatDate(artifact.updatedAt)}</span>
+                  </div>
+                  ${artifact.summary
+                    ? html`<div class="oui-company__node-summary">${artifact.summary}</div>`
+                    : nothing}
+                  ${artifact.path ? html`<code>${artifact.path}</code>` : nothing}
+                </article>
+              `,
+            )
+          : html`<div class="oui-company__empty">${oc("No artifacts yet.")}</div>`}
       </div>
     </section>
   `;
@@ -992,7 +1101,7 @@ export function renderOuiCompany(props: OuiCompanyProps) {
             <div class="oui-company__detail-grid">
               ${renderCeoPanel(props)} ${renderInbox(props)} ${renderRunbooks(props)}
             </div>
-            ${renderAgents(props)}
+            ${renderAgents(props)} ${renderArtifacts(props)}
           `
         : nothing}
       <div class="oui-company__work">

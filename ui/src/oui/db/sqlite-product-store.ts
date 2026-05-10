@@ -3,6 +3,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type {
   OuiAgentRecord,
   OuiAgentStatus,
+  OuiAppendMeetingMessageInput,
+  OuiArtifactRecord,
   OuiCompanyRecord,
   OuiCompanyStatus,
   OuiConversationRecord,
@@ -10,14 +12,22 @@ import type {
   OuiCostEventRecord,
   OuiAppendMessageInput,
   OuiCreateAgentInput,
+  OuiCreateArtifactInput,
   OuiCreateCompanyInput,
   OuiCreateInboxItemInput,
+  OuiCreateMeetingInput,
+  OuiCompleteWorkNodeInput,
+  OuiCompleteWorkNodeResult,
   OuiCreateRunbookDraftInput,
   OuiCreateRunbookDraftResult,
   OuiCreateTaskInput,
   OuiGetOrCreateConversationInput,
   OuiInboxItemRecord,
   OuiInboxItemStatus,
+  OuiListArtifactsFilter,
+  OuiMeetingMessageRecord,
+  OuiMeetingRecord,
+  OuiMeetingStatus,
   OuiMessageRecord,
   OuiMessageRole,
   OuiProductStore,
@@ -33,6 +43,7 @@ import type {
   OuiTaskReviewState,
   OuiTaskRunLink,
   OuiTaskStatus,
+  OuiUpdateMeetingStatusInput,
   OuiWorkNodeRecord,
   OuiWorkNodeStatus,
 } from "../shared/product-types.ts";
@@ -300,6 +311,74 @@ function readInboxItem(row: SqlRow): OuiInboxItemRecord {
     resolvedAt: optionalString(row.resolved_at),
     createdAt: requiredString(row, "created_at"),
     updatedAt: requiredString(row, "updated_at"),
+  };
+}
+
+function parseMeetingParticipants(value: unknown): OuiMeetingRecord["participants"] {
+  const participants: OuiMeetingRecord["participants"] = [];
+  for (const entry of parseJsonObjectArray(value)) {
+    const id = optionalString(entry.id);
+    const label = optionalString(entry.label);
+    const adapterKind = optionalString(entry.adapterKind);
+    if (!id || !label || !adapterKind) {
+      continue;
+    }
+    participants.push({
+      id,
+      label,
+      adapterKind: adapterKind as OuiMeetingRecord["participants"][number]["adapterKind"],
+      adapterId: optionalString(entry.adapterId),
+      agentId: optionalString(entry.agentId),
+      openclawAgentId: optionalString(entry.openclawAgentId),
+      modelRef: optionalString(entry.modelRef),
+      role: optionalString(entry.role),
+    });
+  }
+  return participants;
+}
+
+function readArtifact(row: SqlRow): OuiArtifactRecord {
+  return {
+    id: requiredString(row, "id"),
+    companyId: optionalString(row.company_id),
+    meetingId: optionalString(row.meeting_id),
+    runId: optionalString(row.run_id),
+    kind: requiredString(row, "artifact_type") as OuiArtifactRecord["kind"],
+    title: requiredString(row, "title"),
+    summary: optionalString(row.summary),
+    path: optionalString(row.path),
+    contentType: optionalString(row.content_type) ?? "application/json",
+    content: parseJsonObject(row.content_json),
+    metadata: parseJsonObject(row.metadata_json),
+    createdAt: requiredString(row, "created_at"),
+    updatedAt: requiredString(row, "updated_at"),
+  };
+}
+
+function readMeeting(row: SqlRow): OuiMeetingRecord {
+  return {
+    id: requiredString(row, "id"),
+    title: requiredString(row, "title"),
+    objective: optionalString(row.objective),
+    status: requiredString(row, "status") as OuiMeetingStatus,
+    participants: parseMeetingParticipants(row.participants_json),
+    minutesArtifactId: optionalString(row.minutes_artifact_id),
+    createdAt: requiredString(row, "created_at"),
+    updatedAt: requiredString(row, "updated_at"),
+    startedAt: optionalString(row.started_at),
+    endedAt: optionalString(row.ended_at),
+  };
+}
+
+function readMeetingMessage(row: SqlRow): OuiMeetingMessageRecord {
+  return {
+    id: requiredString(row, "id"),
+    meetingId: requiredString(row, "meeting_id"),
+    role: requiredString(row, "role") as OuiMeetingMessageRecord["role"],
+    participantId: optionalString(row.participant_id),
+    content: requiredString(row, "content"),
+    metadata: parseJsonObject(row.metadata_json),
+    createdAt: requiredString(row, "created_at"),
   };
 }
 
@@ -1008,6 +1087,162 @@ export class OuiSqliteProductStore implements OuiProductStore {
     return this.listWorkNodesSync(companyId, runbookVersionId);
   }
 
+  async completeWorkNode(input: OuiCompleteWorkNodeInput): Promise<OuiCompleteWorkNodeResult> {
+    const now = input.now ?? new Date();
+    const nowIso = toIsoDate(now);
+    return this.transaction(() => {
+      const node = this.requireWorkNode(input.nodeId);
+      if (!["ready", "running", "done"].includes(node.status)) {
+        throw new Error(`Cannot complete OUI work node in ${node.status} state.`);
+      }
+      const version = this.requireRunbookVersion(node.runbookVersionId);
+      const runbook = this.requireRunbook(version.runbookId);
+      const output = input.output ?? {};
+      const summary =
+        input.summary?.trim() || node.summary || "Stage output saved to artifact repository.";
+      const artifact = this.createArtifactSync({
+        id: `${node.id}:artifact`,
+        companyId: node.companyId,
+        runId: node.runId,
+        kind: "stage_output",
+        title: `${node.title} output`,
+        summary,
+        contentType: "application/json",
+        content: {
+          ...output,
+          nodeId: node.id,
+          stageId: node.stageId,
+          runbookVersionId: node.runbookVersionId,
+        },
+        metadata: {
+          source: "work_node",
+          completedBy: input.completedBy ?? null,
+        },
+        now,
+      });
+      this.run(
+        `
+          UPDATE oui_work_nodes
+          SET status = 'done',
+              summary = ?,
+              output_json = ?,
+              updated_at = ?
+          WHERE id = ?
+        `,
+        summary,
+        JSON.stringify(output),
+        nowIso,
+        node.id,
+      );
+      this.run(
+        `
+          INSERT INTO oui_node_outputs(
+            id, node_id, company_id, runbook_version_id, run_id, artifact_id,
+            summary, output_json, created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            artifact_id = excluded.artifact_id,
+            summary = excluded.summary,
+            output_json = excluded.output_json,
+            created_at = excluded.created_at
+        `,
+        `${node.id}:output`,
+        node.id,
+        node.companyId,
+        node.runbookVersionId,
+        node.runId ?? null,
+        artifact.id,
+        summary,
+        JSON.stringify(output),
+        nowIso,
+      );
+      if (node.status === "done") {
+        return {
+          node: this.requireWorkNode(node.id),
+          nextNode: this.getNextOpenWorkNodeSync(
+            node.companyId,
+            node.runbookVersionId,
+            node.orderIndex,
+          ),
+          artifact,
+          company: this.requireCompany(node.companyId),
+          runbook: this.requireRunbook(runbook.id),
+          version: this.requireRunbookVersion(version.id),
+        };
+      }
+      const nextRow = this.getOne(
+        `
+          SELECT * FROM oui_work_nodes
+          WHERE company_id = ?
+            AND runbook_version_id = ?
+            AND order_index > ?
+            AND status = 'pending'
+          ORDER BY order_index ASC, id ASC
+          LIMIT 1
+        `,
+        node.companyId,
+        node.runbookVersionId,
+        node.orderIndex,
+      );
+      const nextPending = nextRow ? readWorkNode(nextRow) : null;
+      if (nextPending) {
+        this.run(
+          `
+            UPDATE oui_work_nodes
+            SET status = 'ready',
+                updated_at = ?
+            WHERE id = ?
+          `,
+          nowIso,
+          nextPending.id,
+        );
+        this.run(
+          `
+            UPDATE oui_companies
+            SET status = 'running',
+                current_stage = ?,
+                updated_at = ?
+            WHERE id = ?
+          `,
+          nextPending.title,
+          nowIso,
+          node.companyId,
+        );
+      } else {
+        this.run(
+          "UPDATE oui_runbook_versions SET status = 'completed', updated_at = ? WHERE id = ?",
+          nowIso,
+          version.id,
+        );
+        this.run(
+          "UPDATE oui_runbooks SET status = 'completed', updated_at = ? WHERE id = ?",
+          nowIso,
+          runbook.id,
+        );
+        this.run(
+          `
+            UPDATE oui_companies
+            SET status = 'idle',
+                current_stage = 'Completed',
+                updated_at = ?
+            WHERE id = ?
+          `,
+          nowIso,
+          node.companyId,
+        );
+      }
+      return {
+        node: this.requireWorkNode(node.id),
+        nextNode: nextPending ? this.requireWorkNode(nextPending.id) : null,
+        artifact,
+        company: this.requireCompany(node.companyId),
+        runbook: this.requireRunbook(runbook.id),
+        version: this.requireRunbookVersion(version.id),
+      };
+    });
+  }
+
   async createInboxItem(input: OuiCreateInboxItemInput): Promise<OuiInboxItemRecord> {
     const now = toIsoDate(input.now);
     const id = input.id ?? randomUUID();
@@ -1097,6 +1332,207 @@ export class OuiSqliteProductStore implements OuiProductStore {
       input.itemId,
     );
     return this.requireInboxItem(input.itemId);
+  }
+
+  async createArtifact(input: OuiCreateArtifactInput): Promise<OuiArtifactRecord> {
+    return this.createArtifactSync(input);
+  }
+
+  private createArtifactSync(input: OuiCreateArtifactInput): OuiArtifactRecord {
+    const now = toIsoDate(input.now);
+    const id = input.id ?? randomUUID();
+    if (input.companyId) {
+      this.requireCompany(input.companyId);
+    }
+    if (input.meetingId) {
+      this.requireMeeting(input.meetingId);
+    }
+    this.run(
+      `
+        INSERT INTO oui_artifacts(
+          id, company_id, meeting_id, run_id, artifact_type, title, summary,
+          path, content_type, content_json, metadata_json, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          company_id = excluded.company_id,
+          meeting_id = excluded.meeting_id,
+          run_id = excluded.run_id,
+          artifact_type = excluded.artifact_type,
+          title = excluded.title,
+          summary = excluded.summary,
+          path = excluded.path,
+          content_type = excluded.content_type,
+          content_json = excluded.content_json,
+          metadata_json = excluded.metadata_json,
+          updated_at = excluded.updated_at
+      `,
+      id,
+      input.companyId ?? null,
+      input.meetingId ?? null,
+      input.runId ?? null,
+      input.kind,
+      input.title,
+      input.summary ?? null,
+      input.path ?? null,
+      input.contentType ?? "application/json",
+      JSON.stringify(input.content ?? {}),
+      JSON.stringify(input.metadata ?? {}),
+      now,
+      now,
+    );
+    return this.requireArtifact(id);
+  }
+
+  async listArtifacts(filter: OuiListArtifactsFilter = {}): Promise<OuiArtifactRecord[]> {
+    if (filter.companyId) {
+      return this.getAll(
+        `
+          SELECT * FROM oui_artifacts
+          WHERE company_id = ?
+          ORDER BY created_at DESC, id ASC
+        `,
+        filter.companyId,
+      ).map(readArtifact);
+    }
+    if (filter.meetingId) {
+      return this.getAll(
+        `
+          SELECT * FROM oui_artifacts
+          WHERE meeting_id = ?
+          ORDER BY created_at DESC, id ASC
+        `,
+        filter.meetingId,
+      ).map(readArtifact);
+    }
+    if (filter.runId) {
+      return this.getAll(
+        `
+          SELECT * FROM oui_artifacts
+          WHERE run_id = ?
+          ORDER BY created_at DESC, id ASC
+        `,
+        filter.runId,
+      ).map(readArtifact);
+    }
+    return this.getAll(
+      `
+        SELECT * FROM oui_artifacts
+        ORDER BY created_at DESC, id ASC
+      `,
+    ).map(readArtifact);
+  }
+
+  async createMeeting(input: OuiCreateMeetingInput): Promise<OuiMeetingRecord> {
+    const title = input.title.trim();
+    if (!title) {
+      throw new Error("OUI meeting title is required.");
+    }
+    const now = toIsoDate(input.now);
+    const id = input.id ?? randomUUID();
+    this.run(
+      `
+        INSERT INTO oui_meetings(
+          id, title, objective, status, participants_json, created_at, updated_at
+        )
+        VALUES (?, ?, ?, 'draft', ?, ?, ?)
+      `,
+      id,
+      title,
+      input.objective ?? null,
+      JSON.stringify(input.participants ?? []),
+      now,
+      now,
+    );
+    return this.requireMeeting(id);
+  }
+
+  async getMeeting(meetingId: string): Promise<OuiMeetingRecord | null> {
+    return this.getMeetingSync(meetingId);
+  }
+
+  async listMeetings(): Promise<OuiMeetingRecord[]> {
+    return this.getAll(
+      `
+        SELECT * FROM oui_meetings
+        ORDER BY
+          CASE status WHEN 'active' THEN 0 WHEN 'draft' THEN 1 ELSE 2 END,
+          updated_at DESC,
+          id ASC
+      `,
+    ).map(readMeeting);
+  }
+
+  async updateMeetingStatus(input: OuiUpdateMeetingStatusInput): Promise<OuiMeetingRecord> {
+    const now = toIsoDate(input.now);
+    this.requireMeeting(input.meetingId);
+    this.run(
+      `
+        UPDATE oui_meetings
+        SET status = ?,
+            minutes_artifact_id = COALESCE(?, minutes_artifact_id),
+            started_at = CASE
+              WHEN ? = 'active' THEN COALESCE(started_at, ?)
+              ELSE started_at
+            END,
+            ended_at = CASE
+              WHEN ? = 'ended' THEN COALESCE(ended_at, ?)
+              ELSE ended_at
+            END,
+            updated_at = ?
+        WHERE id = ?
+      `,
+      input.status,
+      input.minutesArtifactId ?? null,
+      input.status,
+      now,
+      input.status,
+      now,
+      now,
+      input.meetingId,
+    );
+    return this.requireMeeting(input.meetingId);
+  }
+
+  async appendMeetingMessage(
+    input: OuiAppendMeetingMessageInput,
+  ): Promise<OuiMeetingMessageRecord> {
+    const meeting = this.requireMeeting(input.meetingId);
+    const content = input.content.trim();
+    if (!content) {
+      throw new Error("OUI meeting message content is required.");
+    }
+    const now = toIsoDate(input.now);
+    const id = input.id ?? randomUUID();
+    this.run(
+      `
+        INSERT INTO oui_meeting_messages(
+          id, meeting_id, role, participant_id, content, metadata_json, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
+      id,
+      meeting.id,
+      input.role,
+      input.participantId ?? null,
+      content,
+      JSON.stringify(input.metadata ?? {}),
+      now,
+    );
+    this.run("UPDATE oui_meetings SET updated_at = ? WHERE id = ?", now, meeting.id);
+    return this.requireMeetingMessage(id);
+  }
+
+  async listMeetingMessages(meetingId: string): Promise<OuiMeetingMessageRecord[]> {
+    this.requireMeeting(meetingId);
+    return this.getAll(
+      `
+        SELECT * FROM oui_meeting_messages
+        WHERE meeting_id = ?
+        ORDER BY created_at ASC, id ASC
+      `,
+      meetingId,
+    ).map(readMeetingMessage);
   }
 
   private createAgentSync(input: OuiCreateAgentInput): OuiAgentRecord {
@@ -1429,12 +1865,44 @@ export class OuiSqliteProductStore implements OuiProductStore {
     return version;
   }
 
+  private requireWorkNode(nodeId: string): OuiWorkNodeRecord {
+    const node = this.getWorkNodeSync(nodeId);
+    if (!node) {
+      throw new Error(`OUI work node not found: ${nodeId}`);
+    }
+    return node;
+  }
+
   private requireInboxItem(itemId: string): OuiInboxItemRecord {
     const item = this.getInboxItemSync(itemId);
     if (!item) {
       throw new Error(`OUI inbox item not found: ${itemId}`);
     }
     return item;
+  }
+
+  private requireArtifact(artifactId: string): OuiArtifactRecord {
+    const artifact = this.getArtifactSync(artifactId);
+    if (!artifact) {
+      throw new Error(`OUI artifact not found: ${artifactId}`);
+    }
+    return artifact;
+  }
+
+  private requireMeeting(meetingId: string): OuiMeetingRecord {
+    const meeting = this.getMeetingSync(meetingId);
+    if (!meeting) {
+      throw new Error(`OUI meeting not found: ${meetingId}`);
+    }
+    return meeting;
+  }
+
+  private requireMeetingMessage(messageId: string): OuiMeetingMessageRecord {
+    const message = this.getMeetingMessageSync(messageId);
+    if (!message) {
+      throw new Error(`OUI meeting message not found: ${messageId}`);
+    }
+    return message;
   }
 
   private getCompanySync(companyId: string): OuiCompanyRecord | null {
@@ -1508,9 +1976,51 @@ export class OuiSqliteProductStore implements OuiProductStore {
     ).map(readWorkNode);
   }
 
+  private getWorkNodeSync(nodeId: string): OuiWorkNodeRecord | null {
+    const row = this.getOne("SELECT * FROM oui_work_nodes WHERE id = ?", nodeId);
+    return row ? readWorkNode(row) : null;
+  }
+
+  private getNextOpenWorkNodeSync(
+    companyId: string,
+    runbookVersionId: string,
+    orderIndex: number,
+  ): OuiWorkNodeRecord | null {
+    const row = this.getOne(
+      `
+        SELECT * FROM oui_work_nodes
+        WHERE company_id = ?
+          AND runbook_version_id = ?
+          AND order_index > ?
+          AND status NOT IN ('done', 'skipped')
+        ORDER BY order_index ASC, id ASC
+        LIMIT 1
+      `,
+      companyId,
+      runbookVersionId,
+      orderIndex,
+    );
+    return row ? readWorkNode(row) : null;
+  }
+
   private getInboxItemSync(itemId: string): OuiInboxItemRecord | null {
     const row = this.getOne("SELECT * FROM oui_inbox_items WHERE id = ?", itemId);
     return row ? readInboxItem(row) : null;
+  }
+
+  private getArtifactSync(artifactId: string): OuiArtifactRecord | null {
+    const row = this.getOne("SELECT * FROM oui_artifacts WHERE id = ?", artifactId);
+    return row ? readArtifact(row) : null;
+  }
+
+  private getMeetingSync(meetingId: string): OuiMeetingRecord | null {
+    const row = this.getOne("SELECT * FROM oui_meetings WHERE id = ?", meetingId);
+    return row ? readMeeting(row) : null;
+  }
+
+  private getMeetingMessageSync(messageId: string): OuiMeetingMessageRecord | null {
+    const row = this.getOne("SELECT * FROM oui_meeting_messages WHERE id = ?", messageId);
+    return row ? readMeetingMessage(row) : null;
   }
 
   private transaction<T>(fn: () => T): T {

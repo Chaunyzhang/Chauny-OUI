@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
 export const OUI_DB_SCHEMA_VERSION = 1;
-export const OUI_DB_LATEST_SCHEMA_VERSION = 4;
+export const OUI_DB_LATEST_SCHEMA_VERSION = 5;
 
 function tableHasColumn(db: DatabaseSync, tableName: string, columnName: string): boolean {
   const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name?: unknown }>;
@@ -330,10 +330,14 @@ export function runOuiMigrations(db: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS oui_artifacts (
       id TEXT PRIMARY KEY,
       company_id TEXT REFERENCES oui_companies(id) ON DELETE CASCADE,
+      meeting_id TEXT,
+      run_id TEXT REFERENCES oui_runs(id) ON DELETE SET NULL,
       artifact_type TEXT NOT NULL,
       title TEXT NOT NULL,
       summary TEXT,
       path TEXT,
+      content_type TEXT NOT NULL DEFAULT 'application/json',
+      content_json TEXT NOT NULL DEFAULT '{}',
       metadata_json TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -341,6 +345,53 @@ export function runOuiMigrations(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_oui_artifacts_company
       ON oui_artifacts(company_id, created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_oui_artifacts_meeting
+      ON oui_artifacts(meeting_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS oui_meetings (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      objective TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      participants_json TEXT NOT NULL DEFAULT '[]',
+      minutes_artifact_id TEXT REFERENCES oui_artifacts(id) ON DELETE SET NULL,
+      started_at TEXT,
+      ended_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oui_meetings_status_updated
+      ON oui_meetings(status, updated_at);
+
+    CREATE TABLE IF NOT EXISTS oui_meeting_messages (
+      id TEXT PRIMARY KEY,
+      meeting_id TEXT NOT NULL REFERENCES oui_meetings(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      participant_id TEXT,
+      content TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oui_meeting_messages_meeting
+      ON oui_meeting_messages(meeting_id, created_at, id);
+
+    CREATE TABLE IF NOT EXISTS oui_node_outputs (
+      id TEXT PRIMARY KEY,
+      node_id TEXT NOT NULL REFERENCES oui_work_nodes(id) ON DELETE CASCADE,
+      company_id TEXT NOT NULL REFERENCES oui_companies(id) ON DELETE CASCADE,
+      runbook_version_id TEXT NOT NULL REFERENCES oui_runbook_versions(id) ON DELETE CASCADE,
+      run_id TEXT REFERENCES oui_runs(id) ON DELETE SET NULL,
+      artifact_id TEXT REFERENCES oui_artifacts(id) ON DELETE SET NULL,
+      summary TEXT,
+      output_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oui_node_outputs_node
+      ON oui_node_outputs(node_id, created_at);
 
     CREATE TABLE IF NOT EXISTS oui_run_events (
       id TEXT PRIMARY KEY,
@@ -387,6 +438,10 @@ export function runOuiMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "oui_companies", "current_stage TEXT");
   addColumnIfMissing(db, "oui_companies", "autonomy_policy_json TEXT NOT NULL DEFAULT '{}'");
   addColumnIfMissing(db, "oui_companies", "reporting_preference_json TEXT NOT NULL DEFAULT '{}'");
+  addColumnIfMissing(db, "oui_artifacts", "meeting_id TEXT");
+  addColumnIfMissing(db, "oui_artifacts", "run_id TEXT");
+  addColumnIfMissing(db, "oui_artifacts", "content_type TEXT NOT NULL DEFAULT 'application/json'");
+  addColumnIfMissing(db, "oui_artifacts", "content_json TEXT NOT NULL DEFAULT '{}'");
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_oui_companies_status
@@ -402,7 +457,7 @@ export function runOuiMigrations(db: DatabaseSync): void {
   removeEmptyLegacyDefaultCompany(db);
 
   const now = new Date().toISOString();
-  for (const version of [OUI_DB_SCHEMA_VERSION, 2, 3, OUI_DB_LATEST_SCHEMA_VERSION]) {
+  for (let version = OUI_DB_SCHEMA_VERSION; version <= OUI_DB_LATEST_SCHEMA_VERSION; version++) {
     const existing = db
       .prepare("SELECT version FROM oui_schema_migrations WHERE version = ?")
       .get(version);

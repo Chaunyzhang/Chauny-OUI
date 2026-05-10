@@ -1,3 +1,5 @@
+import { readFile, rm } from "node:fs/promises";
+import * as path from "node:path";
 // @vitest-environment node
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
@@ -10,6 +12,7 @@ import { createOuiHttpServer, type OuiHttpServer } from "./http.ts";
 
 let stores: OuiSqliteRunStore[] = [];
 let servers: OuiHttpServer[] = [];
+let artifactRoots: string[] = [];
 
 function createStore() {
   const db = new DatabaseSync(":memory:");
@@ -60,11 +63,29 @@ afterEach(async () => {
     await server.close();
   }
   servers = [];
+  const workspaceRoot = path.resolve(process.cwd());
+  for (const root of artifactRoots) {
+    const resolved = path.resolve(root);
+    if (resolved.startsWith(`${workspaceRoot}${path.sep}`)) {
+      await rm(resolved, { recursive: true, force: true });
+    }
+  }
+  artifactRoots = [];
   for (const store of stores) {
     store.close();
   }
   stores = [];
 });
+
+function createArtifactRoot(name: string): string {
+  const workspaceRoot = path.resolve(process.cwd());
+  const root = path.resolve(workspaceRoot, ".artifacts", name);
+  if (!root.startsWith(`${workspaceRoot}${path.sep}`)) {
+    throw new Error(`Refusing to use artifact root outside workspace: ${root}`);
+  }
+  artifactRoots.push(root);
+  return root;
+}
 
 describe("OUI HTTP server", () => {
   it("boots on an explicit local listener and serves health", async () => {
@@ -394,6 +415,188 @@ describe("OUI HTTP server", () => {
     const openInboxBody = (await openInboxResponse.json()) as { items?: unknown[] };
     expect(openInboxResponse.status).toBe(200);
     expect(openInboxBody.items).toEqual([]);
+  });
+
+  it("completes work nodes through the API and exposes stage artifacts", async () => {
+    const { store, productStore } = createStores();
+    const server = createOuiHttpServer({
+      store,
+      productStore,
+      registry: createOuiAdapterRegistry([createAdapter()]),
+    });
+    servers.push(server);
+    const { port } = await server.listen(0, "127.0.0.1");
+
+    await fetch(`http://127.0.0.1:${port}/api/oui/companies`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "company_nodes",
+        name: "Node Company",
+        openclawLeader: {
+          id: "ceo_nodes",
+          label: "Node CEO",
+          openclawAgentId: "main",
+        },
+      }),
+    });
+    await fetch(`http://127.0.0.1:${port}/api/oui/companies/company_nodes/runbooks`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "runbook_nodes",
+        versionId: "runbook_nodes_v1",
+        title: "Build monitored company",
+        sourceType: "ceo_chat",
+        objective: "Move work through stages.",
+        stages: [
+          { id: "plan", title: "Plan" },
+          { id: "ship", title: "Ship" },
+        ],
+      }),
+    });
+    const startResponse = await fetch(
+      `http://127.0.0.1:${port}/api/oui/runbook-versions/runbook_nodes_v1/start`,
+      { method: "POST", headers: { "content-type": "application/json" } },
+    );
+    const startBody = (await startResponse.json()) as {
+      workNodes?: Array<{ id?: string; title?: string; status?: string }>;
+    };
+    expect(startResponse.status).toBe(200);
+    expect(startBody.workNodes?.map((node) => node.status)).toEqual(["ready", "pending"]);
+
+    const completeResponse = await fetch(
+      `http://127.0.0.1:${port}/api/oui/work-nodes/${encodeURIComponent(
+        startBody.workNodes?.[0]?.id ?? "",
+      )}/complete`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          completedBy: "owner",
+          summary: "Planning finished.",
+          output: { decision: "continue" },
+        }),
+      },
+    );
+    const completeBody = (await completeResponse.json()) as {
+      node?: { status?: string };
+      nextNode?: { title?: string; status?: string };
+      artifact?: { kind?: string; summary?: string; content?: Record<string, unknown> };
+      controlRoom?: { artifactCount?: number; nodes?: Array<{ sourceStatus?: string }> };
+    };
+    expect(completeResponse.status).toBe(200);
+    expect(completeBody.node).toMatchObject({ status: "done" });
+    expect(completeBody.nextNode).toMatchObject({ title: "Ship", status: "ready" });
+    expect(completeBody.artifact).toMatchObject({
+      kind: "stage_output",
+      summary: "Planning finished.",
+      content: { decision: "continue", stageId: "plan" },
+    });
+    expect(completeBody.controlRoom?.artifactCount).toBe(1);
+    expect(completeBody.controlRoom?.nodes?.map((node) => node.sourceStatus)).toEqual([
+      "done",
+      "ready",
+    ]);
+
+    const artifactsResponse = await fetch(
+      `http://127.0.0.1:${port}/api/oui/companies/company_nodes/artifacts`,
+    );
+    const artifactsBody = (await artifactsResponse.json()) as {
+      artifacts?: Array<{ kind?: string; title?: string }>;
+    };
+    expect(artifactsResponse.status).toBe(200);
+    expect(artifactsBody.artifacts).toEqual([
+      expect.objectContaining({ kind: "stage_output", title: "Plan output" }),
+    ]);
+  });
+
+  it("keeps meeting room state global and generates markdown minutes artifacts", async () => {
+    const { store, productStore } = createStores();
+    const artifactRoot = createArtifactRoot("oui-http-meetings");
+    const server = createOuiHttpServer({
+      store,
+      productStore,
+      artifactRoot,
+      registry: createOuiAdapterRegistry([createAdapter()]),
+    });
+    servers.push(server);
+    const { port } = await server.listen(0, "127.0.0.1");
+
+    const createResponse = await fetch(`http://127.0.0.1:${port}/api/oui/meetings`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "meeting_strategy",
+        title: "Strategy meeting",
+        objective: "Discuss company direction.",
+        participants: [
+          {
+            id: "main",
+            label: "Main",
+            adapterKind: "openclaw",
+            adapterId: "openclaw-local",
+            openclawAgentId: "main",
+          },
+        ],
+      }),
+    });
+    expect(createResponse.status).toBe(201);
+
+    const turnResponse = await fetch(
+      `http://127.0.0.1:${port}/api/oui/meetings/meeting_strategy/turn`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "What should the CEO focus on?" }),
+      },
+    );
+    const turnBody = (await turnResponse.json()) as {
+      participantMessages?: Array<{ metadata?: { execution?: string } }>;
+    };
+    expect(turnResponse.status).toBe(201);
+    expect(turnBody.participantMessages?.[0]?.metadata).toMatchObject({
+      execution: "preview_disabled",
+    });
+
+    const minutesResponse = await fetch(
+      `http://127.0.0.1:${port}/api/oui/meetings/meeting_strategy/minutes`,
+      { method: "POST" },
+    );
+    const minutesBody = (await minutesResponse.json()) as {
+      meeting?: { status?: string; minutesArtifactId?: string };
+      artifact?: { id?: string; kind?: string; path?: string | null; meetingId?: string | null };
+    };
+    expect(minutesResponse.status).toBe(201);
+    expect(minutesBody.meeting).toMatchObject({
+      status: "ended",
+      minutesArtifactId: "meeting_strategy:minutes",
+    });
+    expect(minutesBody.artifact).toMatchObject({
+      id: "meeting_strategy:minutes",
+      kind: "meeting_minutes",
+      meetingId: "meeting_strategy",
+    });
+    const minutesPath = minutesBody.artifact?.path;
+    expect(minutesPath?.startsWith(artifactRoot)).toBe(true);
+    const markdown = await readFile(minutesPath ?? "", "utf8");
+    expect(markdown).toContain("# Strategy meeting");
+    expect(markdown).toContain("What should the CEO focus on?");
+
+    const detailResponse = await fetch(
+      `http://127.0.0.1:${port}/api/oui/meetings/meeting_strategy`,
+    );
+    const detailBody = (await detailResponse.json()) as {
+      meeting?: { id?: string };
+      artifacts?: Array<{ id?: string }>;
+      messages?: Array<{ role?: string }>;
+    };
+    expect(detailResponse.status).toBe(200);
+    expect(detailBody.meeting?.id).toBe("meeting_strategy");
+    expect(detailBody.artifacts?.map((artifact) => artifact.id)).toEqual([
+      "meeting_strategy:minutes",
+    ]);
+    expect(detailBody.messages?.map((message) => message.role)).toEqual(["owner", "participant"]);
   });
 
   it("stores CEO chat messages and generates a runbook draft from company context", async () => {

@@ -92,6 +92,7 @@ import type { ExecApprovalRequest } from "./controllers/exec-approval.ts";
 import type { ExecApprovalsFile, ExecApprovalsSnapshot } from "./controllers/exec-approvals.ts";
 import {
   assignOuiTask as assignOuiTaskInternal,
+  completeOuiWorkNode as completeOuiWorkNodeInternal,
   createOuiCompany as createOuiCompanyInternal,
   createOuiTask as createOuiTaskInternal,
   createOuiTaskFromParallelPane as createOuiTaskFromParallelPaneInternal,
@@ -99,12 +100,25 @@ import {
   loadOuiCompany as loadOuiCompanyInternal,
   selectOuiCompany as selectOuiCompanyInternal,
   queueOuiTaskRun as queueOuiTaskRunInternal,
+  resolveOuiInboxItem as resolveOuiInboxItemInternal,
   selectOuiTask as selectOuiTaskInternal,
   sendOuiCeoMessage as sendOuiCeoMessageInternal,
   startOuiRunbookVersion as startOuiRunbookVersionInternal,
   transitionOuiTaskReview as transitionOuiTaskReviewInternal,
   type OuiCompanyMessage,
 } from "./controllers/oui-company.ts";
+import {
+  addOuiMeetingDraftParticipant as addOuiMeetingDraftParticipantInternal,
+  createOuiMeeting as createOuiMeetingInternal,
+  endOuiMeeting as endOuiMeetingInternal,
+  generateOuiMeetingMinutes as generateOuiMeetingMinutesInternal,
+  loadOuiMeetings as loadOuiMeetingsInternal,
+  removeOuiMeetingDraftParticipant as removeOuiMeetingDraftParticipantInternal,
+  selectOuiMeeting as selectOuiMeetingInternal,
+  sendOuiMeetingTurn as sendOuiMeetingTurnInternal,
+  startOuiMeeting as startOuiMeetingInternal,
+  type OuiMeetingRoomMessage,
+} from "./controllers/oui-meeting-room.ts";
 import type {
   ClawHubSearchResult,
   ClawHubSkillDetail,
@@ -578,6 +592,7 @@ export class OpenClawApp extends LitElement {
     | null = null;
   @state() ouiCompanyWorkNodes: import("../oui/shared/product-types.ts").OuiWorkNodeRecord[] = [];
   @state() ouiCompanyInboxItems: import("../oui/shared/product-types.ts").OuiInboxItemRecord[] = [];
+  @state() ouiCompanyArtifacts: import("../oui/shared/product-types.ts").OuiArtifactRecord[] = [];
   @state()
   ouiCompanyControlRoom: import("../oui/shared/product-types.ts").OuiControlRoomReadModel | null =
     null;
@@ -593,6 +608,20 @@ export class OpenClawApp extends LitElement {
   @state() ouiTaskDraftTitle = "";
   @state() ouiTaskDraftDescription = "";
   @state() ouiTaskDraftAgentId = "";
+  @state() ouiMeetingLoading = false;
+  @state() ouiMeetingBusy = false;
+  @state() ouiMeetingError: string | null = null;
+  @state() ouiMeetingMessage: OuiMeetingRoomMessage | null = null;
+  @state() ouiMeetings: import("../oui/shared/product-types.ts").OuiMeetingRecord[] = [];
+  @state() ouiSelectedMeetingId: string | null = null;
+  @state() ouiMeetingMessages: import("../oui/shared/product-types.ts").OuiMeetingMessageRecord[] =
+    [];
+  @state() ouiMeetingArtifacts: import("../oui/shared/product-types.ts").OuiArtifactRecord[] = [];
+  @state() ouiMeetingTitleDraft = "";
+  @state() ouiMeetingObjectiveDraft = "";
+  @state() ouiMeetingParticipantDraftId = "";
+  @state() ouiMeetingDraftParticipantIds: string[] = [];
+  @state() ouiMeetingPromptDraft = "";
 
   @state() skillsLoading = false;
   @state() skillsReport: SkillStatusReport | null = null;
@@ -928,6 +957,54 @@ export class OpenClawApp extends LitElement {
 
   async startOuiRunbookVersion(versionId: string) {
     await startOuiRunbookVersionInternal(this, versionId);
+  }
+
+  async resolveOuiInboxItem(
+    itemId: string,
+    action: import("../oui/shared/product-types.ts").OuiInboxResolutionAction,
+    responseText?: string | null,
+  ) {
+    await resolveOuiInboxItemInternal(this, itemId, action, responseText);
+  }
+
+  async completeOuiWorkNode(nodeId: string) {
+    await completeOuiWorkNodeInternal(this, nodeId);
+  }
+
+  async loadOuiMeetings() {
+    await loadOuiMeetingsInternal(this);
+  }
+
+  async selectOuiMeeting(meetingId: string) {
+    await selectOuiMeetingInternal(this, meetingId);
+  }
+
+  addOuiMeetingDraftParticipant() {
+    addOuiMeetingDraftParticipantInternal(this);
+  }
+
+  removeOuiMeetingDraftParticipant(participantId: string) {
+    removeOuiMeetingDraftParticipantInternal(this, participantId);
+  }
+
+  async createOuiMeeting() {
+    await createOuiMeetingInternal(this);
+  }
+
+  async startOuiMeeting(meetingId: string) {
+    await startOuiMeetingInternal(this, meetingId);
+  }
+
+  async endOuiMeeting(meetingId: string) {
+    await endOuiMeetingInternal(this, meetingId);
+  }
+
+  async sendOuiMeetingTurn() {
+    await sendOuiMeetingTurnInternal(this);
+  }
+
+  async generateOuiMeetingMinutes(meetingId: string) {
+    await generateOuiMeetingMinutesInternal(this, meetingId);
   }
 
   async createOuiTask() {

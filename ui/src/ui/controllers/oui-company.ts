@@ -1,5 +1,6 @@
 import type {
   OuiAgentRecord,
+  OuiArtifactRecord,
   OuiCompanyMode,
   OuiCompanyRecord,
   OuiCompanySummary,
@@ -7,6 +8,7 @@ import type {
   OuiControlRoomReadModel,
   OuiConversationRecord,
   OuiEmployeeAdapterPreview,
+  OuiInboxResolutionAction,
   OuiInboxItemRecord,
   OuiMessageRecord,
   OuiRunbookRecord,
@@ -48,6 +50,7 @@ export type OuiCompanyUiState = {
   ouiCompanyActiveRunbookVersion: OuiRunbookVersionRecord | null;
   ouiCompanyWorkNodes: OuiWorkNodeRecord[];
   ouiCompanyInboxItems: OuiInboxItemRecord[];
+  ouiCompanyArtifacts: OuiArtifactRecord[];
   ouiCompanyControlRoom: OuiControlRoomReadModel | null;
   ouiCompanyAdapters: OuiEmployeeAdapterPreview[];
   ouiCompanyTimeline: OuiTaskTimeline | null;
@@ -73,6 +76,7 @@ type CompanyBody = {
   activeRunbookVersion?: OuiRunbookVersionRecord | null;
   workNodes?: OuiWorkNodeRecord[];
   inboxItems?: OuiInboxItemRecord[];
+  artifacts?: OuiArtifactRecord[];
   controlRoom?: OuiControlRoomReadModel | null;
 };
 
@@ -111,6 +115,15 @@ type CeoRunbookDraftBody = {
 type StartRunbookBody = {
   version?: OuiRunbookVersionRecord;
   detail?: CompanyBody;
+};
+
+type CompleteWorkNodeBody = {
+  detail?: CompanyBody | null;
+  node?: OuiWorkNodeRecord;
+};
+
+type ResolveInboxBody = {
+  item?: OuiInboxItemRecord;
 };
 
 const OUI_API_BASE = "/api/oui";
@@ -288,6 +301,7 @@ function clearSelectedCompany(state: OuiCompanyUiState) {
   state.ouiCompanyActiveRunbookVersion = null;
   state.ouiCompanyWorkNodes = [];
   state.ouiCompanyInboxItems = [];
+  state.ouiCompanyArtifacts = [];
   state.ouiCompanyControlRoom = null;
   state.ouiCompanyAdapters = [];
   state.ouiCompanyAgents = [];
@@ -315,6 +329,7 @@ function applyCompanyBody(state: OuiCompanyUiState, body: CompanyBody) {
   state.ouiCompanyActiveRunbookVersion = body.activeRunbookVersion ?? null;
   state.ouiCompanyWorkNodes = Array.isArray(body.workNodes) ? body.workNodes : [];
   state.ouiCompanyInboxItems = Array.isArray(body.inboxItems) ? body.inboxItems : [];
+  state.ouiCompanyArtifacts = Array.isArray(body.artifacts) ? body.artifacts : [];
   state.ouiCompanyControlRoom = body.controlRoom ?? null;
   if (
     state.ouiCompanySelectedTaskId &&
@@ -632,6 +647,76 @@ export async function startOuiRunbookVersion(state: OuiCompanyUiState, versionId
             ?.title ?? ouiCompanyCopy("Runbook"),
       }),
     };
+  } catch (error) {
+    state.ouiCompanyMessage = { kind: "error", text: formatError(error) };
+  } finally {
+    state.ouiCompanyBusy = false;
+    markChanged(state);
+  }
+}
+
+export async function resolveOuiInboxItem(
+  state: OuiCompanyUiState,
+  itemId: string,
+  action: OuiInboxResolutionAction,
+  responseText?: string | null,
+) {
+  state.ouiCompanyBusy = true;
+  state.ouiCompanyMessage = null;
+  markChanged(state);
+  try {
+    const companyId = requireSelectedCompanyId(state);
+    const body = await fetchJson<ResolveInboxBody>(`/inbox/${encodeURIComponent(itemId)}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({
+        action,
+        responseText: responseText ?? null,
+        actorId: "user",
+      }),
+    });
+    state.ouiCompanyMessage = {
+      kind: "success",
+      text: ouiCompanyCopy("Inbox item handled: {title}", {
+        title: body.item?.title ?? itemId,
+      }),
+    };
+    await reloadCompany(state, companyId);
+    await reloadCompanies(state);
+  } catch (error) {
+    state.ouiCompanyMessage = { kind: "error", text: formatError(error) };
+  } finally {
+    state.ouiCompanyBusy = false;
+    markChanged(state);
+  }
+}
+
+export async function completeOuiWorkNode(state: OuiCompanyUiState, nodeId: string) {
+  state.ouiCompanyBusy = true;
+  state.ouiCompanyMessage = null;
+  markChanged(state);
+  try {
+    const body = await fetchJson<CompleteWorkNodeBody>(
+      `/work-nodes/${encodeURIComponent(nodeId)}/complete`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          completedBy: "user",
+          summary: ouiCompanyCopy("Marked complete from control room."),
+        }),
+      },
+    );
+    if (body.detail) {
+      applyCompanyBody(state, body.detail);
+    } else {
+      await reloadCompany(state, requireSelectedCompanyId(state));
+    }
+    state.ouiCompanyMessage = {
+      kind: "success",
+      text: ouiCompanyCopy("Work node completed: {title}", {
+        title: body.node?.title ?? nodeId,
+      }),
+    };
+    await reloadCompanies(state);
   } catch (error) {
     state.ouiCompanyMessage = { kind: "error", text: formatError(error) };
   } finally {

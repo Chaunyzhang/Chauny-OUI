@@ -107,6 +107,7 @@ import {
 import { loadLogs } from "./controllers/logs.ts";
 import { loadNodes } from "./controllers/nodes.ts";
 import { resolveOuiCompanyCeoCandidates } from "./controllers/oui-company.ts";
+import { resolveOuiMeetingParticipantCandidates } from "./controllers/oui-meeting-room.ts";
 import { loadPresence } from "./controllers/presence.ts";
 import {
   branchSessionFromCheckpoint,
@@ -190,6 +191,7 @@ import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.t
 import { renderModelManager } from "./views/model-manager.ts";
 import { renderOuiChat } from "./views/oui-chat.ts";
 import { renderOuiCompany } from "./views/oui-company.ts";
+import { renderOuiMeetingRoom } from "./views/oui-meeting-room.ts";
 import { renderOuiOverview } from "./views/oui-overview.ts";
 import { renderOverview } from "./views/overview.ts";
 import { renderParallelChat } from "./views/parallel-chat.ts";
@@ -738,7 +740,10 @@ function renderCompanyNavigation(state: AppViewState, collapsed: boolean) {
             </div>
           `
         : nothing}
-      <div class="nav-section__items">${renderTab(state, "ouiCompany", { collapsed })}</div>
+      <div class="nav-section__items">
+        ${renderTab(state, "ouiCompany", { collapsed })}
+        ${renderTab(state, "ouiMeetingRoom", { collapsed })}
+      </div>
     </section>
   `;
 }
@@ -1690,6 +1695,7 @@ export function renderApp(state: AppViewState) {
       activeRunbookVersion: state.ouiCompanyActiveRunbookVersion,
       workNodes: state.ouiCompanyWorkNodes,
       inboxItems: state.ouiCompanyInboxItems,
+      artifacts: state.ouiCompanyArtifacts,
       controlRoom: state.ouiCompanyControlRoom,
       adapters: state.ouiCompanyAdapters,
       timeline: state.ouiCompanyTimeline,
@@ -1715,6 +1721,9 @@ export function renderApp(state: AppViewState) {
       onSendCeoMessage: () => state.sendOuiCeoMessage(),
       onGenerateRunbookDraft: () => state.generateOuiCeoRunbookDraft(),
       onStartRunbookVersion: (versionId) => state.startOuiRunbookVersion(versionId),
+      onResolveInboxItem: (itemId, action, responseText) =>
+        state.resolveOuiInboxItem(itemId, action, responseText),
+      onCompleteWorkNode: (nodeId) => state.completeOuiWorkNode(nodeId),
       onDraftTitleChange: (next) => {
         state.ouiTaskDraftTitle = next;
       },
@@ -1732,6 +1741,44 @@ export function renderApp(state: AppViewState) {
         state.transitionOuiTaskReview(taskId, reviewState),
       onOpenCeoChat: () => state.setTab("ouiChat"),
       onOpenParallelChat: () => state.setTab("ouiChat"),
+    });
+  const renderOuiMeetingRoomSection = () =>
+    renderOuiMeetingRoom({
+      loading: state.ouiMeetingLoading,
+      busy: state.ouiMeetingBusy,
+      error: state.ouiMeetingError,
+      message: state.ouiMeetingMessage,
+      meetings: state.ouiMeetings,
+      selectedMeetingId: state.ouiSelectedMeetingId,
+      messages: state.ouiMeetingMessages,
+      artifacts: state.ouiMeetingArtifacts,
+      participantCandidates: resolveOuiMeetingParticipantCandidates(state.agentsList),
+      titleDraft: state.ouiMeetingTitleDraft,
+      objectiveDraft: state.ouiMeetingObjectiveDraft,
+      participantDraftId: state.ouiMeetingParticipantDraftId,
+      draftParticipantIds: state.ouiMeetingDraftParticipantIds,
+      promptDraft: state.ouiMeetingPromptDraft,
+      onRefresh: () => state.loadOuiMeetings(),
+      onSelectMeeting: (meetingId) => state.selectOuiMeeting(meetingId),
+      onTitleDraftChange: (next) => {
+        state.ouiMeetingTitleDraft = next;
+      },
+      onObjectiveDraftChange: (next) => {
+        state.ouiMeetingObjectiveDraft = next;
+      },
+      onParticipantDraftChange: (next) => {
+        state.ouiMeetingParticipantDraftId = next;
+      },
+      onAddParticipant: () => state.addOuiMeetingDraftParticipant(),
+      onRemoveParticipant: (participantId) => state.removeOuiMeetingDraftParticipant(participantId),
+      onCreateMeeting: () => state.createOuiMeeting(),
+      onPromptDraftChange: (next) => {
+        state.ouiMeetingPromptDraft = next;
+      },
+      onSendTurn: () => state.sendOuiMeetingTurn(),
+      onStartMeeting: (meetingId) => state.startOuiMeeting(meetingId),
+      onEndMeeting: (meetingId) => state.endOuiMeeting(meetingId),
+      onGenerateMinutes: (meetingId) => state.generateOuiMeetingMinutes(meetingId),
     });
   const applyQuickModelSetup = async () => {
     state.setupModelSaving = true;
@@ -2110,6 +2157,8 @@ export function renderApp(state: AppViewState) {
         return renderAgentManagerSection();
       case "ouiCompany":
         return renderOuiCompanySection();
+      case "ouiMeetingRoom":
+        return renderOuiMeetingRoomSection();
       default:
         return nothing;
     }
