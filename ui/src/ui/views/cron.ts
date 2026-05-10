@@ -2,6 +2,7 @@ import { html, nothing } from "lit";
 import { ifDefined } from "lit/directives/if-defined.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { t } from "../../i18n/index.ts";
+import { localizeConfigCopy } from "../../i18n/lib/config-copy.ts";
 import type {
   CronFieldErrors,
   CronFieldKey,
@@ -293,8 +294,8 @@ function fieldLabelForKey(
     payloadThinking: t("cron.form.thinking"),
     timeoutSeconds: t("cron.form.timeoutSeconds"),
     deliveryTo: t("cron.form.to"),
-    failureAlertAfter: "Failure alert after",
-    failureAlertCooldownSeconds: "Failure alert cooldown",
+    failureAlertAfter: localizeConfigCopy("Failure alert after"),
+    failureAlertCooldownSeconds: localizeConfigCopy("Failure alert cooldown"),
   };
   return labels[key];
 }
@@ -429,7 +430,11 @@ export function renderCron(props: CronProps) {
       </div>
       <div class="cron-summary-strip__actions">
         ${props.onQuickCreate
-          ? html` <button class="btn btn--primary" @click=${props.onQuickCreate}>+ New</button> `
+          ? html`
+              <button class="btn btn--primary" @click=${props.onQuickCreate}>
+                ${localizeConfigCopy("+ New")}
+              </button>
+            `
           : nothing}
         <button
           class=${props.loading ? "btn cron-refresh-btn--loading" : "btn"}
@@ -1072,7 +1077,9 @@ export function renderCron(props: CronProps) {
                     })}
                   placeholder="agent:main:main"
                 />
-                <div class="cron-help">Optional routing key for job delivery and wake routing.</div>
+                <div class="cron-help">
+                  ${localizeConfigCopy("Optional routing key for job delivery and wake routing.")}
+                </div>
               </label>
               ${isCronSchedule
                 ? html`
@@ -1146,7 +1153,9 @@ export function renderCron(props: CronProps) {
                         placeholder="default"
                       />
                       <div class="cron-help">
-                        Optional channel account ID for multi-account setups.
+                        ${localizeConfigCopy(
+                          "Optional channel account ID for multi-account setups.",
+                        )}
                       </div>
                     </label>
                     <label class="field checkbox cron-checkbox cron-span-2">
@@ -1158,9 +1167,13 @@ export function renderCron(props: CronProps) {
                             payloadLightContext: (e.target as HTMLInputElement).checked,
                           })}
                       />
-                      <span class="field-checkbox__label">Light context</span>
+                      <span class="field-checkbox__label">
+                        ${localizeConfigCopy("Light context")}
+                      </span>
                       <div class="cron-help">
-                        Use lightweight bootstrap context for this agent job.
+                        ${localizeConfigCopy(
+                          "Use lightweight bootstrap context for this agent job.",
+                        )}
                       </div>
                     </label>
                     <label class="field">
@@ -1205,18 +1218,26 @@ export function renderCron(props: CronProps) {
                               .value as CronFormState["failureAlertMode"],
                           })}
                       >
-                        <option value="inherit">Inherit global setting</option>
-                        <option value="disabled">Disable for this job</option>
-                        <option value="custom">Custom per-job settings</option>
+                        <option value="inherit">
+                          ${localizeConfigCopy("Inherit global setting")}
+                        </option>
+                        <option value="disabled">
+                          ${localizeConfigCopy("Disable for this job")}
+                        </option>
+                        <option value="custom">
+                          ${localizeConfigCopy("Custom per-job settings")}
+                        </option>
                       </select>
                       <div class="cron-help">
-                        Control when this job sends repeated-failure alerts.
+                        ${localizeConfigCopy(
+                          "Control when this job sends repeated-failure alerts.",
+                        )}
                       </div>
                     </label>
                     ${props.form.failureAlertMode === "custom"
                       ? html`
                           <label class="field">
-                            ${renderFieldLabel("Alert after")}
+                            ${renderFieldLabel(localizeConfigCopy("Alert after"))}
                             <input
                               id="cron-failure-alert-after"
                               .value=${props.form.failureAlertAfter}
@@ -1232,14 +1253,16 @@ export function renderCron(props: CronProps) {
                                 })}
                               placeholder="2"
                             />
-                            <div class="cron-help">Consecutive errors before alerting.</div>
+                            <div class="cron-help">
+                              ${localizeConfigCopy("Consecutive errors before alerting.")}
+                            </div>
                             ${renderFieldError(
                               props.fieldErrors.failureAlertAfter,
                               errorIdForField("failureAlertAfter"),
                             )}
                           </label>
                           <label class="field">
-                            ${renderFieldLabel("Cooldown (seconds)")}
+                            ${renderFieldLabel(localizeConfigCopy("Cooldown (seconds)"))}
                             <input
                               id="cron-failure-alert-cooldown-seconds"
                               .value=${props.form.failureAlertCooldownSeconds}
@@ -1257,14 +1280,16 @@ export function renderCron(props: CronProps) {
                                 })}
                               placeholder="3600"
                             />
-                            <div class="cron-help">Minimum seconds between alerts.</div>
+                            <div class="cron-help">
+                              ${localizeConfigCopy("Minimum seconds between alerts.")}
+                            </div>
                             ${renderFieldError(
                               props.fieldErrors.failureAlertCooldownSeconds,
                               errorIdForField("failureAlertCooldownSeconds"),
                             )}
                           </label>
                           <label class="field">
-                            ${renderFieldLabel("Alert channel")}
+                            ${renderFieldLabel(localizeConfigCopy("Alert channel"))}
                             <select
                               .value=${props.form.failureAlertChannel || "last"}
                               @change=${(e: Event) =>
@@ -1281,7 +1306,7 @@ export function renderCron(props: CronProps) {
                             </select>
                           </label>
                           <label class="field">
-                            ${renderFieldLabel("Alert to")}
+                            ${renderFieldLabel(localizeConfigCopy("Alert to"))}
                             <input
                               .value=${props.form.failureAlertTo}
                               list="cron-delivery-to-suggestions"
@@ -1292,11 +1317,13 @@ export function renderCron(props: CronProps) {
                               placeholder="+1555... or chat id"
                             />
                             <div class="cron-help">
-                              Optional recipient override for failure alerts.
+                              ${localizeConfigCopy(
+                                "Optional recipient override for failure alerts.",
+                              )}
                             </div>
                           </label>
                           <label class="field">
-                            ${renderFieldLabel("Alert mode")}
+                            ${renderFieldLabel(localizeConfigCopy("Alert mode"))}
                             <select
                               .value=${props.form.failureAlertDeliveryMode || "announce"}
                               @change=${(e: Event) =>
@@ -1305,19 +1332,25 @@ export function renderCron(props: CronProps) {
                                     .value as CronFormState["failureAlertDeliveryMode"],
                                 })}
                             >
-                              <option value="announce">Announce (via channel)</option>
-                              <option value="webhook">Webhook (HTTP POST)</option>
+                              <option value="announce">
+                                ${localizeConfigCopy("Announce (via channel)")}
+                              </option>
+                              <option value="webhook">
+                                ${localizeConfigCopy("Webhook (HTTP POST)")}
+                              </option>
                             </select>
                           </label>
                           <label class="field">
-                            ${renderFieldLabel("Alert account ID")}
+                            ${renderFieldLabel(localizeConfigCopy("Alert account ID"))}
                             <input
                               .value=${props.form.failureAlertAccountId}
                               @input=${(e: Event) =>
                                 props.onFormChange({
                                   failureAlertAccountId: (e.target as HTMLInputElement).value,
                                 })}
-                              placeholder="Account ID for multi-account setups"
+                              placeholder=${localizeConfigCopy(
+                                "Account ID for multi-account setups",
+                              )}
                             />
                           </label>
                         `
@@ -1589,7 +1622,7 @@ function renderJob(job: CronJob, props: CronProps) {
               selectAnd(() => props.onRun(job, "due"));
             }}
           >
-            Run if due
+            ${localizeConfigCopy("Run if due")}
           </button>
           <button
             class="btn"

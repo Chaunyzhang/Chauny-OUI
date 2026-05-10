@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { normalizeToolName } from "../../../../src/agents/tool-policy-shared.js";
 import { t } from "../../i18n/index.ts";
+import { isZhCnConfigCopy, localizeConfigCopy } from "../../i18n/lib/config-copy.ts";
 import { normalizeLowercaseStringOrEmpty } from "../string-coerce.ts";
 import type {
   SkillStatusEntry,
@@ -45,10 +46,10 @@ function buildCatalogBadgeLabels(section: AgentToolSection, tool: AgentToolEntry
   if (source === "plugin" && pluginId) {
     badges.push(`Plugin: ${pluginId}`);
   } else if (source === "core") {
-    badges.push("Built-In");
+    badges.push(localizeConfigCopy("Built-In"));
   }
   if (tool.optional) {
-    badges.push("Optional");
+    badges.push(localizeConfigCopy("Optional"));
   }
   return badges;
 }
@@ -71,15 +72,15 @@ function formatToolPolicyState(params: {
   denied: boolean;
 }) {
   if (params.denied) {
-    return "Disabled by agent override.";
+    return localizeConfigCopy("Disabled by agent override.");
   }
   if (params.allowed && params.baseAllowed) {
-    return "Enabled by the current profile.";
+    return localizeConfigCopy("Enabled by the current profile.");
   }
   if (params.allowed) {
-    return "Enabled by agent override.";
+    return localizeConfigCopy("Enabled by agent override.");
   }
-  return "Not included in the current profile.";
+  return localizeConfigCopy("Not included in the current profile.");
 }
 
 function formatToolSourceLabel(section: AgentToolSection, tool: AgentToolEntry) {
@@ -88,7 +89,7 @@ function formatToolSourceLabel(section: AgentToolSection, tool: AgentToolEntry) 
   if (source === "plugin" && pluginId) {
     return `Plugin: ${pluginId}`;
   }
-  return "Built-In";
+  return localizeConfigCopy("Built-In");
 }
 
 function formatToolAccessSummary(params: {
@@ -97,15 +98,15 @@ function formatToolAccessSummary(params: {
   denied: boolean;
 }) {
   if (params.denied) {
-    return "Override Off";
+    return localizeConfigCopy("Override Off");
   }
   if (params.allowed && params.baseAllowed) {
-    return "Enabled";
+    return localizeConfigCopy("Enabled");
   }
   if (params.allowed) {
-    return "Override On";
+    return localizeConfigCopy("Override On");
   }
-  return "Profile Off";
+  return localizeConfigCopy("Profile Off");
 }
 
 function formatToolRuntimeSummary(params: {
@@ -113,12 +114,12 @@ function formatToolRuntimeSummary(params: {
   runtimeSessionMatchesSelectedAgent: boolean;
 }) {
   if (params.activeEntry) {
-    return "Live Now";
+    return localizeConfigCopy("Live Now");
   }
   if (params.runtimeSessionMatchesSelectedAgent) {
-    return "Not Live";
+    return localizeConfigCopy("Not Live");
   }
-  return "Other Agent";
+  return localizeConfigCopy("Other Agent");
 }
 
 function toToolAnchorId(toolId: string) {
@@ -127,6 +128,9 @@ function toToolAnchorId(toolId: string) {
 }
 
 function formatCountLabel(count: number, singular: string, plural = `${singular}s`) {
+  if (isZhCnConfigCopy()) {
+    return `${count} ${localizeConfigCopy(singular)}`;
+  }
   return `${count} ${count === 1 ? singular : plural}`;
 }
 
@@ -219,10 +223,10 @@ export function renderAgentTools(params: {
   const profileOptions = resolveToolProfileOptions(params.toolsCatalogResult);
   const toolSections = resolveToolSections(params.toolsCatalogResult);
   const profileSource = agentTools.profile
-    ? "agent override"
+    ? localizeConfigCopy("agent override")
     : globalTools.profile
-      ? "global default"
-      : "default";
+      ? localizeConfigCopy("global default")
+      : localizeConfigCopy("default");
   const hasAgentAllow = Array.isArray(agentTools.allow) && agentTools.allow.length > 0;
   const hasGlobalAllow = Array.isArray(globalTools.allow) && globalTools.allow.length > 0;
   const editable =
@@ -337,18 +341,19 @@ export function renderAgentTools(params: {
     <section class="card">
       <div class="agent-tools-header">
         <div class="agent-tools-header__intro">
-          <div class="card-title">Tool Access</div>
+          <div class="card-title">${localizeConfigCopy("Tool Access")}</div>
           <div class="card-sub">
-            Profile + per-tool overrides for this agent.
-            <span class="mono">${enabledCount}/${toolIds.length}</span> enabled.
+            ${localizeConfigCopy("Profile + per-tool overrides for this agent.")}
+            <span class="mono">${enabledCount}/${toolIds.length}</span>
+            ${localizeConfigCopy("enabled.")}
           </div>
         </div>
         <div class="agent-tools-header__actions">
           <button class="btn btn--sm" ?disabled=${!editable} @click=${() => updateAll(true)}>
-            Enable All
+            ${localizeConfigCopy("Enable All")}
           </button>
           <button class="btn btn--sm" ?disabled=${!editable} @click=${() => updateAll(false)}>
-            Disable All
+            ${localizeConfigCopy("Disable All")}
           </button>
           <button
             class="btn btn--sm"
@@ -362,7 +367,7 @@ export function renderAgentTools(params: {
             ?disabled=${params.configSaving || !params.configDirty}
             @click=${params.onConfigSave}
           >
-            ${params.configSaving ? "Saving…" : "Save"}
+            ${params.configSaving ? localizeConfigCopy("Saving…") : localizeConfigCopy("Save")}
           </button>
         </div>
       </div>
@@ -370,35 +375,41 @@ export function renderAgentTools(params: {
       ${!params.configForm
         ? html`
             <div class="callout info" style="margin-top: 12px">
-              Load the gateway config to adjust tool profiles.
+              ${localizeConfigCopy("Load the gateway config to adjust tool profiles.")}
             </div>
           `
         : nothing}
       ${hasAgentAllow
         ? html`
             <div class="callout info" style="margin-top: 12px">
-              This agent is using an explicit allowlist in config. Tool overrides are managed in the
-              Config tab.
+              ${localizeConfigCopy(
+                "This agent is using an explicit allowlist in config. Tool overrides are managed in the Config tab.",
+              )}
             </div>
           `
         : nothing}
       ${hasGlobalAllow
         ? html`
             <div class="callout info" style="margin-top: 12px">
-              Global tools.allow is set. Agent overrides cannot enable tools that are globally
-              blocked.
+              ${localizeConfigCopy(
+                "Global tools.allow is set. Agent overrides cannot enable tools that are globally blocked.",
+              )}
             </div>
           `
         : nothing}
       ${params.toolsCatalogLoading && !params.toolsCatalogResult && !params.toolsCatalogError
         ? html`
-            <div class="callout info" style="margin-top: 12px">Loading runtime tool catalog…</div>
+            <div class="callout info" style="margin-top: 12px">
+              ${localizeConfigCopy("Loading runtime tool catalog…")}
+            </div>
           `
         : nothing}
       ${params.toolsCatalogError
         ? html`
             <div class="callout info" style="margin-top: 12px">
-              Could not load runtime tool catalog. Showing built-in fallback list instead.
+              ${localizeConfigCopy(
+                "Could not load runtime tool catalog. Showing built-in fallback list instead.",
+              )}
             </div>
           `
         : nothing}
@@ -406,15 +417,19 @@ export function renderAgentTools(params: {
       <div class="agent-tools-overview">
         <div class="agent-tools-overview__primary">
           <div class="agent-tools-pane">
-            <div class="label">Available Right Now</div>
+            <div class="label">${localizeConfigCopy("Available Right Now")}</div>
             <div class="card-sub">
-              What this agent can use in the current chat session.
-              <span class="mono">${params.runtimeSessionKey || "no session"}</span>
+              ${localizeConfigCopy("What this agent can use in the current chat session.")}
+              <span class="mono">
+                ${params.runtimeSessionKey || localizeConfigCopy("no session")}
+              </span>
             </div>
             ${!params.runtimeSessionMatchesSelectedAgent
               ? html`
                   <div class="callout info" style="margin-top: 12px">
-                    Switch chat to this agent to view its live runtime tools.
+                    ${localizeConfigCopy(
+                      "Switch chat to this agent to view its live runtime tools.",
+                    )}
                   </div>
                 `
               : params.toolsEffectiveLoading &&
@@ -422,19 +437,21 @@ export function renderAgentTools(params: {
                   !params.toolsEffectiveError
                 ? html`
                     <div class="callout info" style="margin-top: 12px">
-                      Loading available tools…
+                      ${localizeConfigCopy("Loading available tools…")}
                     </div>
                   `
                 : params.toolsEffectiveError
                   ? html`
                       <div class="callout info" style="margin-top: 12px">
-                        Could not load available tools for this session.
+                        ${localizeConfigCopy("Could not load available tools for this session.")}
                       </div>
                     `
                   : (params.toolsEffectiveResult?.groups?.length ?? 0) === 0
                     ? html`
                         <div class="callout info" style="margin-top: 12px">
-                          No tools are available for this session right now.
+                          ${localizeConfigCopy(
+                            "No tools are available for this session right now.",
+                          )}
                         </div>
                       `
                     : html`
@@ -458,9 +475,13 @@ export function renderAgentTools(params: {
                             ? html`
                                 <span
                                   class="agent-tools-runtime-chip agent-tools-runtime-chip--more"
-                                  title=${`${hiddenEffectiveToolCount} more live tools are available in the groups below.`}
+                                  title=${isZhCnConfigCopy()
+                                    ? `下方分组还有 ${hiddenEffectiveToolCount} 个实时 tool。`
+                                    : `${hiddenEffectiveToolCount} more live tools are available in the groups below.`}
                                 >
-                                  +${hiddenEffectiveToolCount} more live tools
+                                  ${isZhCnConfigCopy()
+                                    ? `+${hiddenEffectiveToolCount} 个实时 tool`
+                                    : `+${hiddenEffectiveToolCount} more live tools`}
                                 </span>
                               `
                             : nothing}
@@ -469,7 +490,7 @@ export function renderAgentTools(params: {
           </div>
 
           <div class="agent-tools-pane">
-            <div class="label">Quick Presets</div>
+            <div class="label">${localizeConfigCopy("Quick Presets")}</div>
             <div class="agent-tools-buttons">
               ${profileOptions.map(
                 (option) => html`
@@ -478,7 +499,7 @@ export function renderAgentTools(params: {
                     ?disabled=${!editable}
                     @click=${() => params.onProfileChange(params.agentId, option.id, true)}
                   >
-                    ${option.label}
+                    ${localizeConfigCopy(option.label)}
                   </button>
                 `,
               )}
@@ -487,7 +508,7 @@ export function renderAgentTools(params: {
                 ?disabled=${!editable}
                 @click=${() => params.onProfileChange(params.agentId, null, false)}
               >
-                Inherit
+                ${localizeConfigCopy("Inherit")}
               </button>
             </div>
           </div>
@@ -495,25 +516,29 @@ export function renderAgentTools(params: {
 
         <div class="agent-tools-facts">
           <div class="agent-tools-fact">
-            <div class="label">Profile</div>
+            <div class="label">${localizeConfigCopy("Profile")}</div>
             <div class="mono">${profile}</div>
           </div>
           <div class="agent-tools-fact">
-            <div class="label">Source</div>
+            <div class="label">${localizeConfigCopy("Source")}</div>
             <div>${profileSource}</div>
           </div>
           <div class="agent-tools-fact">
-            <div class="label">Enabled</div>
+            <div class="label">${localizeConfigCopy("Enabled")}</div>
             <div class="mono">${enabledCount}/${toolIds.length}</div>
           </div>
           <div class="agent-tools-fact">
-            <div class="label">Live</div>
+            <div class="label">${localizeConfigCopy("Live")}</div>
             <div class="mono">${liveToolCount}</div>
           </div>
           <div class="agent-tools-fact">
-            <div class="label">Status</div>
+            <div class="label">${localizeConfigCopy("Status")}</div>
             <div class="mono">
-              ${params.configSaving ? "saving…" : params.configDirty ? "unsaved" : "saved"}
+              ${params.configSaving
+                ? localizeConfigCopy("saving")
+                : params.configDirty
+                  ? localizeConfigCopy("unsaved")
+                  : localizeConfigCopy("saved")}
             </div>
           </div>
         </div>
@@ -535,12 +560,15 @@ export function renderAgentTools(params: {
               <summary class="agent-tools-group__summary">
                 <span class="agent-tools-group__summary-main">
                   <span class="agent-tools-group__title">
-                    ${section.label}
+                    ${localizeConfigCopy(section.label)}
                     ${section.source === "plugin" && section.pluginId
                       ? html`<span class="agent-pill">Plugin: ${section.pluginId}</span>`
                       : nothing}
                   </span>
-                  <span class="agent-tools-group__preview" aria-label="Tool preview">
+                  <span
+                    class="agent-tools-group__preview"
+                    aria-label=${localizeConfigCopy("Tool preview")}
+                  >
                     ${previewTools.map(
                       (tool) =>
                         html`<span class="mono" translate="no" title=${tool.label}
@@ -548,7 +576,13 @@ export function renderAgentTools(params: {
                         >`,
                     )}
                     ${remainingPreviewCount > 0
-                      ? html`<span>+${remainingPreviewCount} more</span>`
+                      ? html`
+                          <span>
+                            ${isZhCnConfigCopy()
+                              ? `+${remainingPreviewCount} 个`
+                              : `+${remainingPreviewCount} more`}
+                          </span>
+                        `
                       : nothing}
                   </span>
                 </span>
@@ -583,15 +617,15 @@ export function renderAgentTools(params: {
                           <div class="agent-tool-summary__title-row">
                             <span class="agent-tool-title mono" translate="no">${tool.label}</span>
                           </div>
-                          <div class="agent-tool-sub">${tool.description}</div>
+                          <div class="agent-tool-sub">${localizeConfigCopy(tool.description)}</div>
                         </div>
                         <dl class="agent-tool-summary__facts">
                           <div class="agent-tool-summary__fact">
-                            <dt class="label">Access</dt>
+                            <dt class="label">${localizeConfigCopy("Access")}</dt>
                             <dd>${accessSummary}</dd>
                           </div>
                           <div class="agent-tool-summary__fact">
-                            <dt class="label">Session</dt>
+                            <dt class="label">${localizeConfigCopy("Session")}</dt>
                             <dd>${runtimeSummary}</dd>
                           </div>
                         </dl>
@@ -607,7 +641,7 @@ export function renderAgentTools(params: {
                             type="checkbox"
                             .checked=${resolved.allowed}
                             ?disabled=${!editable}
-                            aria-label=${`${resolved.allowed ? "Disable" : "Enable"} ${tool.label}`}
+                            aria-label=${`${resolved.allowed ? localizeConfigCopy("Disable") : localizeConfigCopy("Enable")} ${tool.label}`}
                             @change=${(e: Event) =>
                               updateTool(tool.id, (e.target as HTMLInputElement).checked)}
                           />
@@ -617,17 +651,17 @@ export function renderAgentTools(params: {
                       <div class="agent-tool-details">
                         <div class="agent-tool-details-strip">
                           <div class="agent-tool-detail agent-tool-detail--inline">
-                            <div class="label">Access</div>
+                            <div class="label">${localizeConfigCopy("Access")}</div>
                             <div>${formatToolPolicyState(resolved)}</div>
                           </div>
                           <div class="agent-tool-detail agent-tool-detail--inline">
-                            <div class="label">Source</div>
+                            <div class="label">${localizeConfigCopy("Source")}</div>
                             <div>${formatToolSourceLabel(section, tool)}</div>
                           </div>
                           ${defaultProfiles.length > 0
                             ? html`
                                 <div class="agent-tool-detail agent-tool-detail--inline">
-                                  <div class="label">Default Presets</div>
+                                  <div class="label">${localizeConfigCopy("Default Presets")}</div>
                                   <div class="agent-tool-badges">
                                     ${defaultProfiles.map(
                                       (profileId) =>
@@ -638,16 +672,25 @@ export function renderAgentTools(params: {
                               `
                             : nothing}
                           <div class="agent-tool-detail agent-tool-detail--inline">
-                            <div class="label">Current Session</div>
+                            <div class="label">${localizeConfigCopy("Current Session")}</div>
                             <div>
                               ${activeEntry
-                                ? `Available now via ${renderEffectiveToolBadge(activeEntry)}.`
+                                ? isZhCnConfigCopy()
+                                  ? html`${localizeConfigCopy("Available now via")}
+                                    ${renderEffectiveToolBadge(activeEntry)}。`
+                                  : html`Available now via ${renderEffectiveToolBadge(activeEntry)}.`
                                 : params.runtimeSessionMatchesSelectedAgent
-                                  ? "Not available in this chat session right now."
-                                  : "Switch chat to this agent to inspect live availability."}
+                                  ? localizeConfigCopy(
+                                      "Not available in this chat session right now.",
+                                    )
+                                  : localizeConfigCopy(
+                                      "Switch chat to this agent to inspect live availability.",
+                                    )}
                             </div>
                           </div>
-                          <a class="agent-tool-jump" href="#${anchorId}"> Link to This Tool </a>
+                          <a class="agent-tool-jump" href="#${anchorId}">
+                            ${localizeConfigCopy("Link to This Tool")}
+                          </a>
                         </div>
                       </div>
                     </details>
@@ -706,9 +749,9 @@ export function renderAgentSkills(params: {
     <section class="card">
       <div class="row" style="justify-content: space-between; flex-wrap: wrap;">
         <div style="min-width: 0;">
-          <div class="card-title">Skills</div>
+          <div class="card-title">${localizeConfigCopy("Skills")}</div>
           <div class="card-sub">
-            Per-agent skill allowlist and workspace skills.
+            ${localizeConfigCopy("Per-agent skill allowlist and workspace skills.")}
             ${totalCount > 0
               ? html`<span class="mono">${enabledCount}/${totalCount}</span>`
               : nothing}
@@ -724,22 +767,22 @@ export function renderAgentSkills(params: {
               ?disabled=${!editable}
               @click=${() => params.onClear(params.agentId)}
             >
-              Enable All
+              ${localizeConfigCopy("Enable All")}
             </button>
             <button
               class="btn btn--sm"
               ?disabled=${!editable}
               @click=${() => params.onDisableAll(params.agentId)}
             >
-              Disable All
+              ${localizeConfigCopy("Disable All")}
             </button>
             <button
               class="btn btn--sm"
               ?disabled=${!editable || !usingAllowlist}
               @click=${() => params.onClear(params.agentId)}
-              title="Remove per-agent allowlist and use all skills"
+              title=${localizeConfigCopy("Remove per-agent allowlist and use all skills")}
             >
-              Reset
+              ${localizeConfigCopy("Reset")}
             </button>
           </div>
           <button
@@ -757,7 +800,7 @@ export function renderAgentSkills(params: {
             ?disabled=${params.configSaving || !params.configDirty}
             @click=${params.onConfigSave}
           >
-            ${params.configSaving ? "Saving…" : "Save"}
+            ${params.configSaving ? localizeConfigCopy("Saving…") : localizeConfigCopy("Save")}
           </button>
         </div>
       </div>
@@ -765,25 +808,29 @@ export function renderAgentSkills(params: {
       ${!params.configForm
         ? html`
             <div class="callout info" style="margin-top: 12px">
-              Load the gateway config to set per-agent skills.
+              ${localizeConfigCopy("Load the gateway config to set per-agent skills.")}
             </div>
           `
         : nothing}
       ${usingAllowlist
         ? html`
             <div class="callout info" style="margin-top: 12px">
-              This agent uses a custom skill allowlist.
+              ${localizeConfigCopy("This agent uses a custom skill allowlist.")}
             </div>
           `
         : html`
             <div class="callout info" style="margin-top: 12px">
-              All skills are enabled. Disabling any skill will create a per-agent allowlist.
+              ${localizeConfigCopy(
+                "All skills are enabled. Disabling any skill will create a per-agent allowlist.",
+              )}
             </div>
           `}
       ${!reportReady && !params.loading
         ? html`
             <div class="callout info" style="margin-top: 12px">
-              Load skills for this agent to view workspace-specific entries.
+              ${localizeConfigCopy(
+                "Load skills for this agent to view workspace-specific entries.",
+              )}
             </div>
           `
         : nothing}
@@ -793,20 +840,26 @@ export function renderAgentSkills(params: {
 
       <div class="filters" style="margin-top: 14px;">
         <label class="field" style="flex: 1;">
-          <span>Filter</span>
+          <span>${localizeConfigCopy("Filter")}</span>
           <input
             .value=${params.filter}
             @input=${(e: Event) => params.onFilterChange((e.target as HTMLInputElement).value)}
-            placeholder="Search skills"
+            placeholder=${localizeConfigCopy("Search skills")}
             autocomplete="off"
             name="agent-skills-filter"
           />
         </label>
-        <div class="muted">${filtered.length} shown</div>
+        <div class="muted">
+          ${isZhCnConfigCopy() ? `已显示 ${filtered.length} 个` : `${filtered.length} shown`}
+        </div>
       </div>
 
       ${filtered.length === 0
-        ? html` <div class="muted" style="margin-top: 16px">No skills found.</div> `
+        ? html`
+            <div class="muted" style="margin-top: 16px">
+              ${localizeConfigCopy("No skills found.")}
+            </div>
+          `
         : html`
             <div class="agent-skills-groups" style="margin-top: 16px;">
               ${groups.map((group) =>
@@ -876,10 +929,18 @@ function renderAgentSkillRow(
         <div class="list-sub">${skill.description}</div>
         ${renderSkillStatusChips({ skill })}
         ${missing.length > 0
-          ? html`<div class="muted" style="margin-top: 6px;">Missing: ${missing.join(", ")}</div>`
+          ? html`
+              <div class="muted" style="margin-top: 6px;">
+                ${localizeConfigCopy("Missing")}: ${missing.join(", ")}
+              </div>
+            `
           : nothing}
         ${reasons.length > 0
-          ? html`<div class="muted" style="margin-top: 6px;">Reason: ${reasons.join(", ")}</div>`
+          ? html`
+              <div class="muted" style="margin-top: 6px;">
+                ${localizeConfigCopy("Reason")}: ${reasons.join(", ")}
+              </div>
+            `
           : nothing}
       </div>
       <div class="list-meta">

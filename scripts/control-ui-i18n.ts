@@ -970,13 +970,24 @@ type RunProcessOptions = {
   rejectOnFailure?: boolean;
 };
 
+function resolveSpawnCommand(executable: string, args: string[]) {
+  if (process.platform === "win32" && executable === "pnpm") {
+    return {
+      args: ["/d", "/s", "/c", "corepack", executable, ...args],
+      executable: "cmd.exe",
+    };
+  }
+  return { args, executable };
+}
+
 async function runProcess(
   executable: string,
   args: string[],
   options: RunProcessOptions = {},
 ): Promise<{ code: number; stderr: string; stdout: string }> {
   return await new Promise((resolve, reject) => {
-    const child = spawn(executable, args, {
+    const command = resolveSpawnCommand(executable, args);
+    const child = spawn(command.executable, command.args, {
       cwd: options.cwd ?? ROOT,
       env: process.env,
       stdio: ["pipe", "pipe", "pipe"],
@@ -1454,6 +1465,14 @@ async function syncLocale(
     const existing = existingFlat.get(key);
     const shouldRefreshFallback = previousFallbackKeys.has(key);
 
+    if (existing !== undefined && !(allowTranslate && shouldRefreshFallback)) {
+      nextFlat.set(key, existing);
+      if (shouldRefreshFallback) {
+        fallbackKeys.push(key);
+      }
+      continue;
+    }
+
     if (cached && !(allowTranslate && shouldRefreshFallback)) {
       nextFlat.set(key, cached.translated);
       if (shouldRefreshFallback) {
@@ -1470,14 +1489,6 @@ async function syncLocale(
         segment_id: key,
         source_path: `ui/src/i18n/locales/${entry.fileName}`,
       });
-      continue;
-    }
-
-    if (existing !== undefined && !(allowTranslate && shouldRefreshFallback)) {
-      nextFlat.set(key, existing);
-      if (shouldRefreshFallback) {
-        fallbackKeys.push(key);
-      }
       continue;
     }
 
