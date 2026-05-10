@@ -1,13 +1,21 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
-import type { IncomingMessage } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+import type { OuiAdapterKind, OuiAdapterModule } from "./src/oui/shared/types.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const CONTROL_UI_BOOTSTRAP_CONFIG_PATH = "/__openclaw/control-ui-config.json";
 const DEFAULT_GATEWAY_PORT = 18789;
+const NODE_SQLITE_MODULE = "node:sqlite";
+const OUI_DEV_MODULES = {
+  registry: "src/oui/adapters/registry.ts",
+  productStore: "src/oui/db/sqlite-product-store.ts",
+  runStore: "src/oui/db/sqlite-store.ts",
+  http: "src/oui/server/http.ts",
+} as const;
 
 type OpenClawConfig = {
   gateway?: {
@@ -26,6 +34,116 @@ type DevGatewayCandidate = {
 };
 
 type BootstrapConfig = Record<string, unknown>;
+
+type OuiDevApiRuntime = {
+  handle: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+  close(): void;
+};
+
+type OuiDevModuleLoader = <T>(modulePath: string) => Promise<T>;
+
+let ouiDevApiRuntime: Promise<OuiDevApiRuntime> | null = null;
+
+function createDevOuiAdapter(id: string, kind: OuiAdapterKind, label: string): OuiAdapterModule {
+  const externalExecution = kind !== "openclaw";
+  return {
+    id,
+    kind,
+    label,
+    capabilities: {
+      execute: "available",
+      cancel: "available",
+      streamEvents: "missing",
+      listModels: "missing",
+      listAgents: "missing",
+      listSkills: "missing",
+      usageQuery: "manual",
+      localRuntime: kind === "openclaw" ? "available" : "unknown",
+      externalExecution,
+    },
+    async testConnection() {
+      return {
+        ok: kind === "openclaw",
+        status: kind === "openclaw" ? "degraded" : "unavailable",
+        message:
+          kind === "openclaw"
+            ? "OUI dev API can queue OpenClaw-led work records."
+            : "External adapter execution is disabled in the dev API.",
+      };
+    },
+    async execute() {
+      return {
+        status: "blocked",
+        summary: "The OUI dev API stores queued runs; live dispatch is not active in Vite dev.",
+      };
+    },
+  };
+}
+
+function createOuiDevApiRuntime(
+  loadModule: OuiDevModuleLoader,
+  root = here,
+): Promise<OuiDevApiRuntime> {
+  if (ouiDevApiRuntime) {
+    return ouiDevApiRuntime;
+  }
+
+  ouiDevApiRuntime = (async () => {
+    const [
+      { DatabaseSync },
+      { createOuiAdapterRegistry },
+      { OuiSqliteProductStore },
+      { OuiSqliteRunStore },
+      { createOuiHttpRuntime },
+    ] = await Promise.all([
+      import(NODE_SQLITE_MODULE),
+      loadModule<typeof import("./src/oui/adapters/registry.ts")>(OUI_DEV_MODULES.registry),
+      loadModule<typeof import("./src/oui/db/sqlite-product-store.ts")>(
+        OUI_DEV_MODULES.productStore,
+      ),
+      loadModule<typeof import("./src/oui/db/sqlite-store.ts")>(OUI_DEV_MODULES.runStore),
+      loadModule<typeof import("./src/oui/server/http.ts")>(OUI_DEV_MODULES.http),
+    ]);
+
+    const workspaceRoot = path.resolve(root, "..");
+    const dbPath = path.resolve(
+      normalizeOptionalString(process.env.OPENCLAW_CONTROL_UI_OUI_DB_PATH) ??
+        path.join(workspaceRoot, ".artifacts", "oui-dev.sqlite"),
+    );
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+    const db = new DatabaseSync(dbPath, { timeout: 5000 });
+    const store = new OuiSqliteRunStore(db);
+    const productStore = new OuiSqliteProductStore(db);
+    const registry = createOuiAdapterRegistry([
+      createDevOuiAdapter("openclaw-local", "openclaw", "OpenClaw"),
+      createDevOuiAdapter("codex-local", "codex", "Codex"),
+      createDevOuiAdapter("claude-local", "claude", "Claude"),
+    ]);
+    const runtime = createOuiHttpRuntime({
+      store,
+      productStore,
+      registry,
+    });
+
+    return {
+      handle: runtime.handle,
+      close() {
+        store.close();
+        ouiDevApiRuntime = null;
+      },
+    };
+  })();
+  return ouiDevApiRuntime;
+}
+
+function isOuiApiRequest(req: IncomingMessage): boolean {
+  try {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    return url.pathname === "/api/oui" || url.pathname.startsWith("/api/oui/");
+  } catch {
+    return false;
+  }
+}
 
 function normalizeBase(input: string): string {
   const trimmed = input.trim();
@@ -332,6 +450,38 @@ export default defineConfig(() => {
       {
         name: "control-ui-dev-stubs",
         configureServer(server) {
+          const ouiApi = createOuiDevApiRuntime(
+            (modulePath) => server.ssrLoadModule(`/${modulePath}`),
+            server.config.root,
+          );
+          server.middlewares.use((req, res, next) => {
+            if (!isOuiApiRequest(req)) {
+              next();
+              return;
+            }
+            void ouiApi.then(
+              (api) => api.handle(req, res),
+              (error) => {
+                res.statusCode = 500;
+                res.setHeader("Content-Type", "application/json");
+                res.end(
+                  JSON.stringify({
+                    error: "oui_dev_api_unavailable",
+                    message: error instanceof Error ? error.message : "unknown_error",
+                  }),
+                );
+              },
+            );
+          });
+          server.httpServer?.once("close", () => {
+            void ouiApi.then(
+              (api) => api.close(),
+              () => {
+                ouiDevApiRuntime = null;
+              },
+            );
+          });
+
           server.middlewares.use("/__openclaw/control-ui-config.json", (req, res) => {
             res.setHeader("Content-Type", "application/json");
             void buildControlUiDevConfig(req).then(

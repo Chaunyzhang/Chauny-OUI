@@ -24,6 +24,13 @@ export type OuiHttpServer = {
   close(): Promise<void>;
 };
 
+export type OuiHttpRequestHandler = (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+
+export type OuiHttpRuntime = {
+  flags: OuiFeatureFlags;
+  handle: OuiHttpRequestHandler;
+};
+
 function sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
   const json = JSON.stringify(body);
   res.writeHead(statusCode, {
@@ -119,7 +126,7 @@ function requireCompanyService(companyService: OuiCompanyService | null, res: Se
   return companyService;
 }
 
-export function createOuiHttpServer(options: OuiHttpServerOptions): OuiHttpServer {
+export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRuntime {
   const flags = createDefaultOuiFeatureFlags(options.flags);
   const companyService =
     options.companyService ??
@@ -132,7 +139,7 @@ export function createOuiHttpServer(options: OuiHttpServerOptions): OuiHttpServe
           adapterAllowlist: options.adapterAllowlist,
         })
       : null);
-  const server = createServer(async (req, res) => {
+  const handle: OuiHttpRequestHandler = async (req, res) => {
     try {
       if (!isAuthorized(req, options.authToken)) {
         sendJson(res, 401, { error: "unauthorized" });
@@ -430,11 +437,18 @@ export function createOuiHttpServer(options: OuiHttpServerOptions): OuiHttpServe
     } catch (error) {
       sendJson(res, 500, { error: error instanceof Error ? error.message : "unknown_error" });
     }
-  });
+  };
+
+  return { flags, handle };
+}
+
+export function createOuiHttpServer(options: OuiHttpServerOptions): OuiHttpServer {
+  const runtime = createOuiHttpRuntime(options);
+  const server = createServer(runtime.handle);
 
   return {
     server,
-    flags,
+    flags: runtime.flags,
     listen(port = 0, host = "127.0.0.1") {
       return new Promise((resolve, reject) => {
         server.once("error", reject);
