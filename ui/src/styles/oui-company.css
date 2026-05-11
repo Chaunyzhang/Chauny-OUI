@@ -7,6 +7,7 @@
 
 .oui-company__hero,
 .oui-company__dashboard,
+.oui-company__system-rail,
 .oui-company__band,
 .oui-company__creator,
 .oui-company__timeline {
@@ -26,8 +27,8 @@
 
 .oui-company__hero-main {
   display: grid;
-  align-content: space-between;
-  gap: 18px;
+  align-content: center;
+  gap: 12px;
   min-width: 0;
 }
 
@@ -56,7 +57,6 @@
   text-transform: uppercase;
 }
 
-.oui-company__hero-actions,
 .oui-company__task-actions,
 .oui-company__agent-tags {
   display: flex;
@@ -65,7 +65,6 @@
   align-items: center;
 }
 
-.oui-company__hero-actions .btn svg,
 .oui-company__task-actions .btn svg,
 .oui-company__create-button svg,
 .oui-company__timeline .btn svg {
@@ -133,6 +132,7 @@
 
 .oui-company__band,
 .oui-company__dashboard,
+.oui-company__system-rail,
 .oui-company__creator,
 .oui-company__timeline {
   display: grid;
@@ -140,35 +140,115 @@
   padding: 18px;
 }
 
-.oui-company__detail-tabs {
+.oui-company__system-rail {
+  grid-template-columns: minmax(240px, 0.3fr) minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.oui-company__current-company {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.oui-company__current-company:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+}
+
+.oui-company__current-company--selected {
+  border-color: transparent;
+  background: transparent;
+}
+
+.oui-company__current-logo {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--card));
+  color: var(--text-strong);
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.oui-company__current-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.oui-company__current-copy span,
+.oui-company__system-empty {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.oui-company__current-copy strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 15px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oui-company__module-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  min-width: 0;
   padding: 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
 }
 
-.oui-company__detail-tabs a {
+.oui-company__module-tab {
   display: inline-flex;
   align-items: center;
   min-height: 34px;
   padding: 0 12px;
   border: 1px solid transparent;
   border-radius: 8px;
+  background: transparent;
   color: var(--muted);
+  font: inherit;
   font-size: 13px;
   font-weight: 800;
   text-decoration: none;
+  cursor: pointer;
 }
 
-.oui-company__detail-tabs a:hover,
-.oui-company__detail-tab--active {
+.oui-company__module-tab:hover,
+.oui-company__module-tab--active {
   border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
   background: color-mix(in srgb, var(--accent) 8%, var(--card));
   color: var(--text-strong);
+}
+
+.oui-company__system-empty {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 64%, transparent);
 }
 
 .oui-company__detail-grid {
@@ -186,32 +266,25 @@
 
 .oui-company__company-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
-.oui-company__company-create {
-  display: grid;
-  grid-template-columns: minmax(220px, 1.1fr) minmax(220px, 1fr) auto;
-  gap: 12px;
-  align-items: end;
+.oui-company__company-card-shell {
+  position: relative;
   min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
-}
-
-.oui-company__create-company-button svg {
-  width: 16px;
-  height: 16px;
+  height: 196px;
+  min-height: 0;
 }
 
 .oui-company__company-card {
   display: grid;
-  gap: 12px;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 10px;
+  width: 100%;
+  height: 100%;
   min-width: 0;
-  min-height: 188px;
+  min-height: 0;
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -271,7 +344,7 @@
 
 .oui-company__company-objective {
   display: -webkit-box;
-  min-height: 40px;
+  min-height: 0;
   overflow: hidden;
   color: var(--text);
   font-size: 13px;
@@ -281,13 +354,25 @@
   -webkit-line-clamp: 2;
 }
 
+.oui-company__settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.oui-company__settings-actions .btn svg {
+  width: 16px;
+  height: 16px;
+}
+
 .oui-company__agent-card,
 .oui-company__adapter-card,
 .oui-company__task-card,
 .oui-company__run-card,
 .oui-company__node-card,
 .oui-company__inbox-card,
-.oui-company__runbook-card {
+.oui-company__runbook-card,
+.oui-company__routine-card {
   min-width: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -411,9 +496,20 @@
 .oui-company__node-grid,
 .oui-company__inbox-list,
 .oui-company__runbook-list,
+.oui-company__routine-list,
 .oui-company__artifact-list {
   display: grid;
   gap: 10px;
+}
+
+.oui-company__section-subhead {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .oui-company__node-grid {
@@ -423,6 +519,7 @@
 .oui-company__node-card,
 .oui-company__inbox-card,
 .oui-company__runbook-card,
+.oui-company__routine-card,
 .oui-company__artifact-card {
   display: grid;
   gap: 10px;
@@ -457,7 +554,8 @@
 
 .oui-company__node-head strong,
 .oui-company__ceo-strip strong,
-.oui-company__runbook-card strong {
+.oui-company__runbook-card strong,
+.oui-company__routine-card strong {
   overflow: hidden;
   color: var(--text-strong);
   font-weight: 850;
@@ -465,7 +563,8 @@
   white-space: nowrap;
 }
 
-.oui-company__runbook-card p {
+.oui-company__runbook-card p,
+.oui-company__routine-card p {
   margin: 0;
   color: var(--text);
   font-size: 13px;
@@ -490,84 +589,249 @@
   line-height: 1.45;
 }
 
-.oui-company__ceo-strip {
+.oui-company__ceo-page {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
-}
-
-.oui-company__ceo-strip > div:last-child {
-  display: grid;
-  gap: 5px;
+  gap: 24px;
   min-width: 0;
 }
 
-.oui-company__ceo-chat-log {
-  display: grid;
-  gap: 10px;
-  max-height: 320px;
-  overflow: auto;
-  padding-right: 4px;
+.oui-company__ceo-chat-card {
+  display: flex;
+  min-width: 0;
+  height: calc(100dvh - 96px);
+  min-height: 680px;
 }
 
-.oui-company__ceo-message {
-  padding: 12px 14px;
+.content--company-ceo-chat {
+  padding-top: 8px;
+}
+
+.content--company-ceo-chat > * + * {
+  margin-top: 0;
+}
+
+.content--company-ceo-chat .oui-company {
+  gap: 0;
+}
+
+.content--company-ceo-chat .oui-company__ceo-page {
+  gap: 16px;
+}
+
+.content--company-ceo-chat .oui-company__ceo-chat-card {
+  height: calc(100dvh - 78px);
+  min-height: 640px;
+}
+
+.content--company-ceo-chat .oui-company__ceo-chat-card .oui-chat-window-header {
+  grid-template-columns: max-content minmax(0, 1fr);
+  justify-content: stretch;
+  padding: 8px 0 8px;
+}
+
+.oui-company__ceo-plan {
+  gap: 18px;
+}
+
+.oui-company__plan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.oui-company__plan-actions .btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.oui-company__plan-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--bg-elevated) 76%, transparent);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
 }
 
-.oui-company__ceo-message--user {
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+.oui-company__plan-toggle-button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
 }
 
-.oui-company__ceo-message--assistant {
-  border-color: color-mix(in srgb, var(--success) 30%, var(--border));
+.oui-company__plan-toggle-button:hover,
+.oui-company__plan-toggle-button--active {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--border));
+  background: color-mix(in srgb, var(--accent-subtle) 70%, transparent);
+  color: var(--text-strong);
 }
 
-.oui-company__ceo-message--owner {
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+.oui-company__plan-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
-.oui-company__ceo-message--agent,
-.oui-company__ceo-message--participant {
-  border-color: color-mix(in srgb, var(--success) 30%, var(--border));
+.oui-company__plan-summary > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-elevated) 74%, transparent);
 }
 
-.oui-company__ceo-message--system {
-  border-color: color-mix(in srgb, var(--warning, #f7b955) 30%, var(--border));
-  background: color-mix(in srgb, var(--warning, #f7b955) 7%, var(--bg-elevated));
+.oui-company__plan-summary > div:last-child {
+  border-right: 0;
 }
 
-.oui-company__ceo-message-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+.oui-company__plan-summary span,
+.oui-company__plan-step-title span {
   color: var(--muted);
   font-size: 12px;
   font-weight: 750;
 }
 
-.oui-company__ceo-message-head strong {
+.oui-company__plan-summary strong {
+  overflow: hidden;
   color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.oui-company__ceo-message p {
-  margin: 8px 0 0;
-  white-space: pre-wrap;
-}
-
-.oui-company__ceo-composer {
+.oui-company__plan-text {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: end;
+  gap: 16px;
 }
 
-.oui-company__ceo-composer textarea {
-  min-height: 94px;
-  resize: vertical;
+.oui-company__plan-step-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oui-company__plan-step-list li,
+.oui-company__decision-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+}
+
+.oui-company__plan-step-title {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.oui-company__plan-step-title > span:first-child {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
+  color: var(--text-strong);
+  font-weight: 900;
+}
+
+.oui-company__plan-step-title strong,
+.oui-company__decision-card strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oui-company__plan-step-list p,
+.oui-company__decision-card p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.oui-company__decision-list {
+  display: grid;
+  gap: 10px;
+}
+
+.oui-company__plan-flow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 26px;
+  align-items: stretch;
+}
+
+.oui-company__plan-flow-node {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  min-height: 128px;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+}
+
+.oui-company__plan-flow-node::after {
+  content: "→";
+  position: absolute;
+  top: 50%;
+  right: -22px;
+  color: var(--muted);
+  font-weight: 900;
+  transform: translateY(-50%);
+}
+
+.oui-company__plan-flow-node:last-child::after {
+  content: "";
+}
+
+.oui-company__plan-flow-node > span {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 14%, var(--card));
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.oui-company__plan-flow-node strong {
+  color: var(--text-strong);
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.oui-company__plan-flow-node small {
+  align-self: end;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .oui-company__stage-list {
@@ -619,6 +883,411 @@
 
 .oui-company__meeting-participants {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.oui-meeting-room__workspace {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 16px;
+  min-height: calc(100dvh - 96px);
+}
+
+.oui-meeting-room__sidebar {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  max-height: calc(100dvh - 96px);
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--card) 92%, transparent);
+}
+
+.oui-meeting-room__meeting-meta {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.oui-meeting-room__meeting-meta-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.oui-meeting-room__meeting-meta-head h3,
+.oui-meeting-room__panel-head strong {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.oui-meeting-room__panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.oui-meeting-room__description-card,
+.oui-meeting-room__description-input {
+  min-height: 116px;
+  max-height: 116px;
+  overflow-y: auto;
+}
+
+.oui-meeting-room__description-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 62%, transparent);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.oui-meeting-room__description-input {
+  resize: none;
+}
+
+.oui-meeting-room__meeting-meta-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.oui-meeting-room__order-module,
+.oui-meeting-room__management-module {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-elevated) 58%, transparent);
+}
+
+.oui-meeting-room__order-module {
+  align-content: start;
+}
+
+.oui-meeting-room__order-list {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  max-height: min(44dvh, 520px);
+  overflow-y: auto;
+}
+
+.oui-meeting-room__order-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) 132px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-elevated) 72%, transparent);
+}
+
+.oui-meeting-room__order-row select {
+  min-height: 36px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font: inherit;
+  padding: 0 10px;
+}
+
+.oui-meeting-room__order-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 36px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elevated));
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.oui-meeting-room__order-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.oui-meeting-room__order-copy strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oui-meeting-room__order-copy span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.oui-meeting-room__management-actions,
+.oui-meeting-room__agent-module-actions,
+.oui-meeting-room__settings-options,
+.oui-meeting-room__settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.oui-meeting-room__management-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.oui-meeting-room__artifact-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.oui-meeting-room__artifact-panel {
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.oui-meeting-room__participant-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: flex-start;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+}
+
+.oui-meeting-room__participant-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.oui-meeting-room__order-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 9%, var(--card));
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.oui-meeting-room__participant-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.oui-meeting-room__participant-actions .btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.oui-meeting-room__participant-action--danger {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
+}
+
+.oui-meeting-room__participant-action--danger:hover {
+  background: color-mix(in srgb, var(--danger) 10%, var(--card));
+}
+
+.oui-meeting-room__artifact-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-elevated) 58%, transparent);
+}
+
+.oui-meeting-room__artifact-card code {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oui-meeting-room__chat-card {
+  display: flex;
+  min-width: 0;
+  min-height: 640px;
+  height: calc(100dvh - 96px);
+}
+
+.oui-meeting-room__chat-card .chat {
+  width: 100%;
+  height: 100%;
+}
+
+.oui-meeting-room__chat-header {
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  padding: 8px 0;
+}
+
+.oui-meeting-room__chat-header .oui-chat-window-header__identity {
+  flex-wrap: wrap;
+}
+
+.oui-meeting-room__chat-header .oui-chat-window-header__actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.oui-meeting-room__management {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.oui-meeting-room__settings-dialog {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow-lg);
+}
+
+.oui-meeting-room__settings-head h3 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 18px;
+}
+
+.oui-meeting-room__settings-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.oui-meeting-room__settings-section {
+  display: grid;
+  gap: 10px;
+}
+
+.oui-meeting-room__settings-section > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.oui-meeting-room__invite-dialog {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--shadow-lg);
+}
+
+.oui-meeting-room__invite-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.oui-meeting-room__invite-head h3 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 18px;
+}
+
+.oui-meeting-room__invite-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.oui-meeting-room__invite-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(48dvh, 420px);
+  overflow-y: auto;
+}
+
+.oui-meeting-room__invite-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated) 78%, transparent);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.oui-meeting-room__invite-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  background: color-mix(in srgb, var(--accent-subtle) 38%, var(--bg-elevated));
+}
+
+.oui-meeting-room__invite-card--selected {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--border));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.oui-meeting-room__invite-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.oui-meeting-room__invite-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .oui-company__pill {
@@ -917,6 +1586,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .oui-company__company-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .oui-company__timeline {
     position: static;
     max-height: none;
@@ -926,27 +1599,74 @@
 @media (max-width: 860px) {
   .oui-company__board,
   .oui-company__control-summary,
+  .oui-company__company-grid,
+  .oui-company__plan-summary,
   .oui-company__runbook-active,
-  .oui-company__ceo-composer {
+  .oui-company__system-rail {
     grid-template-columns: minmax(0, 1fr);
   }
 
   .oui-company__control-summary > div,
+  .oui-company__plan-summary > div,
   .oui-company__runbook-active > div {
     border-right: 0;
     border-bottom: 1px solid var(--border);
   }
 
   .oui-company__control-summary > div:last-child,
+  .oui-company__plan-summary > div:last-child,
   .oui-company__runbook-active > div:last-child {
     border-bottom: 0;
   }
 
-  .oui-company__creator-grid {
+  .oui-company__plan-actions {
+    justify-content: stretch;
+  }
+
+  .content--company-ceo-chat .oui-company__ceo-chat-card {
+    height: calc(100dvh - 64px);
+    min-height: 560px;
+  }
+
+  .content--company-ceo-chat .oui-company__ceo-chat-card .oui-chat-window-header {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .oui-company__company-create {
+  .oui-meeting-room__workspace {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
+  }
+
+  .oui-meeting-room__sidebar {
+    max-height: none;
+  }
+
+  .oui-meeting-room__order-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oui-meeting-room__management-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .oui-meeting-room__chat-card {
+    height: calc(100dvh - 64px);
+    min-height: 560px;
+  }
+
+  .oui-meeting-room__chat-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .oui-company__plan-flow-node::after {
+    content: "↓";
+    top: auto;
+    right: 50%;
+    bottom: -23px;
+    transform: translateX(50%);
+  }
+
+  .oui-company__creator-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -958,6 +1678,7 @@
 @media (max-width: 560px) {
   .oui-company__hero,
   .oui-company__dashboard,
+  .oui-company__system-rail,
   .oui-company__band,
   .oui-company__creator,
   .oui-company__timeline {
@@ -977,5 +1698,9 @@
 
   .oui-company__metric:last-child {
     border-bottom: 0;
+  }
+
+  .oui-meeting-room__management-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

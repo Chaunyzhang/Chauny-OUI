@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
 export const OUI_DB_SCHEMA_VERSION = 1;
-export const OUI_DB_LATEST_SCHEMA_VERSION = 5;
+export const OUI_DB_LATEST_SCHEMA_VERSION = 8;
 
 function tableHasColumn(db: DatabaseSync, tableName: string, columnName: string): boolean {
   const rows = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name?: unknown }>;
@@ -327,6 +327,82 @@ export function runOuiMigrations(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_oui_work_nodes_runbook_order
       ON oui_work_nodes(runbook_version_id, order_index);
 
+    CREATE TABLE IF NOT EXISTS oui_work_wakeups (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL REFERENCES oui_companies(id) ON DELETE CASCADE,
+      runbook_version_id TEXT REFERENCES oui_runbook_versions(id) ON DELETE CASCADE,
+      work_node_id TEXT REFERENCES oui_work_nodes(id) ON DELETE SET NULL,
+      agent_id TEXT REFERENCES oui_agents(id) ON DELETE SET NULL,
+      reason TEXT NOT NULL,
+      status TEXT NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      max_attempts INTEGER NOT NULL DEFAULT 3,
+      lease_owner TEXT,
+      lease_token TEXT,
+      lease_expires_at TEXT,
+      heartbeat_at TEXT,
+      queued_at TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oui_work_wakeups_queue
+      ON oui_work_wakeups(status, queued_at, id);
+
+    CREATE INDEX IF NOT EXISTS idx_oui_work_wakeups_company_status
+      ON oui_work_wakeups(company_id, status, updated_at);
+
+    CREATE INDEX IF NOT EXISTS idx_oui_work_wakeups_lease
+      ON oui_work_wakeups(status, lease_expires_at);
+
+    CREATE TABLE IF NOT EXISTS oui_routines (
+      id TEXT PRIMARY KEY,
+      company_id TEXT NOT NULL REFERENCES oui_companies(id) ON DELETE CASCADE,
+      runbook_version_id TEXT NOT NULL REFERENCES oui_runbook_versions(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      description TEXT,
+      status TEXT NOT NULL,
+      trigger_kind TEXT NOT NULL,
+      schedule_json TEXT NOT NULL DEFAULT '{}',
+      concurrency_policy TEXT NOT NULL,
+      last_triggered_at TEXT,
+      next_trigger_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oui_routines_company_status
+      ON oui_routines(company_id, status, updated_at);
+
+    CREATE INDEX IF NOT EXISTS idx_oui_routines_due
+      ON oui_routines(status, trigger_kind, next_trigger_at);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_oui_routines_company_version_title
+      ON oui_routines(company_id, runbook_version_id, title);
+
+    CREATE TABLE IF NOT EXISTS oui_routine_triggers (
+      id TEXT PRIMARY KEY,
+      routine_id TEXT NOT NULL REFERENCES oui_routines(id) ON DELETE CASCADE,
+      company_id TEXT NOT NULL REFERENCES oui_companies(id) ON DELETE CASCADE,
+      runbook_version_id TEXT NOT NULL REFERENCES oui_runbook_versions(id) ON DELETE CASCADE,
+      trigger_kind TEXT NOT NULL,
+      status TEXT NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_oui_routine_triggers_routine
+      ON oui_routine_triggers(routine_id, created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_oui_routine_triggers_company_status
+      ON oui_routine_triggers(company_id, status, updated_at);
+
     CREATE TABLE IF NOT EXISTS oui_artifacts (
       id TEXT PRIMARY KEY,
       company_id TEXT REFERENCES oui_companies(id) ON DELETE CASCADE,
@@ -343,18 +419,13 @@ export function runOuiMigrations(db: DatabaseSync): void {
       updated_at TEXT NOT NULL
     );
 
-    CREATE INDEX IF NOT EXISTS idx_oui_artifacts_company
-      ON oui_artifacts(company_id, created_at);
-
-    CREATE INDEX IF NOT EXISTS idx_oui_artifacts_meeting
-      ON oui_artifacts(meeting_id, created_at);
-
     CREATE TABLE IF NOT EXISTS oui_meetings (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       objective TEXT,
       status TEXT NOT NULL DEFAULT 'draft',
       participants_json TEXT NOT NULL DEFAULT '[]',
+      discussion_json TEXT NOT NULL DEFAULT '{}',
       minutes_artifact_id TEXT REFERENCES oui_artifacts(id) ON DELETE SET NULL,
       started_at TEXT,
       ended_at TEXT,
@@ -438,10 +509,12 @@ export function runOuiMigrations(db: DatabaseSync): void {
   addColumnIfMissing(db, "oui_companies", "current_stage TEXT");
   addColumnIfMissing(db, "oui_companies", "autonomy_policy_json TEXT NOT NULL DEFAULT '{}'");
   addColumnIfMissing(db, "oui_companies", "reporting_preference_json TEXT NOT NULL DEFAULT '{}'");
+  addColumnIfMissing(db, "oui_artifacts", "company_id TEXT");
   addColumnIfMissing(db, "oui_artifacts", "meeting_id TEXT");
   addColumnIfMissing(db, "oui_artifacts", "run_id TEXT");
   addColumnIfMissing(db, "oui_artifacts", "content_type TEXT NOT NULL DEFAULT 'application/json'");
   addColumnIfMissing(db, "oui_artifacts", "content_json TEXT NOT NULL DEFAULT '{}'");
+  addColumnIfMissing(db, "oui_meetings", "discussion_json TEXT NOT NULL DEFAULT '{}'");
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_oui_companies_status
@@ -449,6 +522,12 @@ export function runOuiMigrations(db: DatabaseSync): void {
 
     CREATE INDEX IF NOT EXISTS idx_oui_companies_ceo
       ON oui_companies(ceo_agent_id);
+
+    CREATE INDEX IF NOT EXISTS idx_oui_artifacts_company
+      ON oui_artifacts(company_id, created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_oui_artifacts_meeting
+      ON oui_artifacts(meeting_id, created_at);
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_oui_runs_company_idempotency
       ON oui_runs(company_id, idempotency_key)

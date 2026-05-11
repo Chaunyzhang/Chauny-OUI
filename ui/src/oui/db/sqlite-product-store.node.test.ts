@@ -520,6 +520,9 @@ describe("OuiSqliteProductStore meetings and artifacts", () => {
           adapterKind: "openclaw",
           adapterId: "openclaw-local",
           openclawAgentId: "main",
+          muted: false,
+          speakingOrder: 1,
+          thinkingIntensity: "medium",
         },
       ],
       now: new Date("2026-05-10T00:00:00.000Z"),
@@ -527,7 +530,45 @@ describe("OuiSqliteProductStore meetings and artifacts", () => {
     expect(meeting).toMatchObject({
       id: "meeting_1",
       status: "draft",
-      participants: [expect.objectContaining({ adapterKind: "openclaw" })],
+      discussion: {
+        currentRound: 0,
+        phase: "drafting",
+      },
+      participants: [
+        expect.objectContaining({
+          adapterKind: "openclaw",
+          muted: false,
+          speakingOrder: 1,
+          thinkingIntensity: "medium",
+        }),
+      ],
+    });
+
+    await store.updateMeetingParticipants({
+      meetingId: "meeting_1",
+      participants: [
+        {
+          id: "main",
+          label: "Main",
+          adapterKind: "openclaw",
+          adapterId: "openclaw-local",
+          openclawAgentId: "main",
+          muted: true,
+          speakingOrder: 2,
+          thinkingIntensity: "low",
+        },
+        {
+          id: "analyst",
+          label: "Analyst",
+          adapterKind: "openclaw",
+          adapterId: "openclaw-local",
+          openclawAgentId: "analyst",
+          muted: false,
+          speakingOrder: 1,
+          thinkingIntensity: "high",
+        },
+      ],
+      now: new Date("2026-05-10T00:00:30.000Z"),
     });
 
     await store.updateMeetingStatus({
@@ -571,6 +612,24 @@ describe("OuiSqliteProductStore meetings and artifacts", () => {
       id: "meeting_1",
       status: "ended",
       minutesArtifactId: "meeting_1_minutes",
+      discussion: {
+        currentRound: 0,
+        phase: "drafting",
+      },
+      participants: [
+        expect.objectContaining({
+          id: "main",
+          muted: true,
+          speakingOrder: 2,
+          thinkingIntensity: "low",
+        }),
+        expect.objectContaining({
+          id: "analyst",
+          muted: false,
+          speakingOrder: 1,
+          thinkingIntensity: "high",
+        }),
+      ],
     });
     expect((await store.listMeetingMessages("meeting_1")).map((message) => message.id)).toEqual([
       "message_owner",

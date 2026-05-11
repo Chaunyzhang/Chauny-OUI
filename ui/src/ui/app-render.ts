@@ -147,9 +147,11 @@ import {
 import {
   normalizeBasePath,
   TAB_GROUPS,
+  iconForTab,
   isChatTab,
   isCompanyTab,
   isOuiTab,
+  pathForTab,
   subtitleForTab,
   titleForTab,
   type Tab,
@@ -190,7 +192,7 @@ import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderModelManager } from "./views/model-manager.ts";
 import { renderOuiChat } from "./views/oui-chat.ts";
-import { renderOuiCompany } from "./views/oui-company.ts";
+import { renderOuiCompany, type OuiCompanySection } from "./views/oui-company.ts";
 import { renderOuiMeetingRoom } from "./views/oui-meeting-room.ts";
 import { renderOuiOverview } from "./views/oui-overview.ts";
 import { renderOverview } from "./views/overview.ts";
@@ -643,7 +645,7 @@ function selectNavigationMode(state: AppViewState, mode: UiNavigationMode) {
 function renderNavigationModeSwitch(state: AppViewState, collapsed: boolean) {
   const mode = resolveNavigationMode(state);
   const options: Array<{ id: UiNavigationMode; label: string }> = [
-    { id: "company", label: ouiCompanyCopy("Company") },
+    { id: "company", label: ouiCompanyCopy("Lobby") },
     { id: "oui", label: localizeConfigCopy("OUI") },
     { id: "original", label: localizeConfigCopy("Original") },
   ];
@@ -730,19 +732,108 @@ function renderOuiNavigation(state: AppViewState, collapsed: boolean) {
   `;
 }
 
+function companyNavigationInitial(state: AppViewState): string {
+  const name = state.ouiCompanyRecord?.name.trim();
+  return name ? name.slice(0, 1).toUpperCase() : "C";
+}
+
+function openCompanyNavigationSection(state: AppViewState, section: OuiCompanySection) {
+  state.ouiCompanyActiveSection = section;
+  state.setTab("ouiCompany");
+}
+
+function resolveCompanyCeoLabel(state: AppViewState) {
+  const company = state.ouiCompanyRecord;
+  const ceo =
+    state.ouiCompanyAgents.find((agent) => agent.id === company?.ceoAgentId) ??
+    state.ouiCompanyAgents.find((agent) => agent.id === company?.defaultLeaderAgentId) ??
+    state.ouiCompanyAgents.find((agent) => agent.isLeader) ??
+    null;
+  return ceo?.label ?? company?.ceoAgentId ?? state.assistantName;
+}
+
 function renderCompanyNavigation(state: AppViewState, collapsed: boolean) {
+  const company = state.ouiCompanyRecord;
+  const companyName =
+    company?.name === "OUI Company" ? ouiCompanyCopy("OUI Company") : company?.name;
+  const modules: Array<{ label: string; section: OuiCompanySection }> = [
+    { label: "Control room", section: "control-room" },
+    { label: "CEO private chat", section: "ceo-private-chat" },
+    { label: "Inbox center", section: "inbox-center" },
+    { label: "Runbooks", section: "runbooks" },
+    { label: "Organization", section: "organization" },
+    { label: "Artifacts", section: "artifacts" },
+    { label: "Internal records", section: "internal-records" },
+    { label: "Settings", section: "settings" },
+  ];
+  const dashboardActive =
+    state.tab === "ouiCompany" && state.ouiCompanyActiveSection === "dashboard";
+  const dashboardHref = pathForTab("ouiCompany", state.basePath);
   return html`
     <section class="nav-section">
-      ${!collapsed
-        ? html`
-            <div class="nav-section__heading">
-              <span class="nav-section__label-text">${ouiCompanyCopy("Company")}</span>
-            </div>
-          `
-        : nothing}
       <div class="nav-section__items">
-        ${renderTab(state, "ouiCompany", { collapsed })}
+        <a
+          href=${dashboardHref}
+          class="nav-item ${dashboardActive ? "nav-item--active" : ""}"
+          title=${titleForTab("ouiCompany")}
+          @click=${(event: MouseEvent) => {
+            if (
+              event.defaultPrevented ||
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            ) {
+              return;
+            }
+            event.preventDefault();
+            openCompanyNavigationSection(state, "dashboard");
+          }}
+        >
+          <span class="nav-item__icon" aria-hidden="true">${icons[iconForTab("ouiCompany")]}</span>
+          ${!collapsed
+            ? html`<span class="nav-item__text">${titleForTab("ouiCompany")}</span>`
+            : nothing}
+        </a>
         ${renderTab(state, "ouiMeetingRoom", { collapsed })}
+        ${!collapsed
+          ? html`
+              <button
+                class="company-nav-current ${company ? "company-nav-current--selected" : ""}"
+                type="button"
+                @click=${() =>
+                  openCompanyNavigationSection(state, company ? "control-room" : "dashboard")}
+              >
+                <span class="company-nav-current__logo">${companyNavigationInitial(state)}</span>
+                <span class="company-nav-current__name">
+                  ${companyName ?? ouiCompanyCopy("Select a company first.")}
+                </span>
+              </button>
+            `
+          : nothing}
+        ${!collapsed && company
+          ? html`
+              <div class="company-nav-modules">
+                ${modules.map(
+                  (module) => html`
+                    <button
+                      class=${`company-nav-module ${
+                        state.tab === "ouiCompany" &&
+                        state.ouiCompanyActiveSection === module.section
+                          ? "company-nav-module--active"
+                          : ""
+                      }`}
+                      type="button"
+                      @click=${() => openCompanyNavigationSection(state, module.section)}
+                    >
+                      ${ouiCompanyCopy(module.label)}
+                    </button>
+                  `,
+                )}
+              </div>
+            `
+          : nothing}
       </div>
     </section>
   `;
@@ -981,6 +1072,8 @@ export function renderApp(state: AppViewState) {
   const cronNext = state.cronStatus?.nextWakeAtMs ?? null;
   const chatDisabledReason = state.connected ? null : t("chat.disconnected");
   const isChat = isChatTab(state.tab);
+  const isCompanyCeoChat =
+    state.tab === "ouiCompany" && state.ouiCompanyActiveSection === "ceo-private-chat";
   const chatFocus =
     isChat && !state.chatParallelMode && (state.settings.chatFocusMode || state.onboarding);
   const navDrawerOpen = state.navDrawerOpen && !chatFocus && !state.onboarding;
@@ -1682,6 +1775,13 @@ export function renderApp(state: AppViewState) {
       busy: state.ouiCompanyBusy,
       apiAvailable: state.ouiCompanyApiAvailable,
       error: state.ouiCompanyError,
+      activeSection: state.ouiCompanyActiveSection,
+      ceoPlanView: state.ouiCompanyPlanView,
+      ceoChatTopChrome: renderOuiMainChatWindowHeader(state, {
+        agentLabel: resolveCompanyCeoLabel(state),
+        avatarUrl: null,
+        busy: state.ouiCompanyBusy,
+      }),
       message: state.ouiCompanyMessage,
       companySummaries: state.ouiCompanySummaries,
       company: state.ouiCompanyRecord,
@@ -1692,10 +1792,12 @@ export function renderApp(state: AppViewState) {
       tasks: state.ouiCompanyTasks,
       runbooks: state.ouiCompanyRunbooks,
       runbookVersions: state.ouiCompanyRunbookVersions,
+      routines: state.ouiCompanyRoutines,
       activeRunbookVersion: state.ouiCompanyActiveRunbookVersion,
       workNodes: state.ouiCompanyWorkNodes,
       inboxItems: state.ouiCompanyInboxItems,
       artifacts: state.ouiCompanyArtifacts,
+      auditLog: state.ouiCompanyAuditLog,
       controlRoom: state.ouiCompanyControlRoom,
       adapters: state.ouiCompanyAdapters,
       timeline: state.ouiCompanyTimeline,
@@ -1715,12 +1817,17 @@ export function renderApp(state: AppViewState) {
         state.ouiCreateCompanyCeoId = next;
       },
       onCreateCompany: () => state.createOuiCompany(),
+      onDeleteCompany: (companyId) => state.deleteOuiCompany(companyId),
       onCeoDraftChange: (next) => {
         state.ouiCompanyCeoDraft = next;
       },
       onSendCeoMessage: () => state.sendOuiCeoMessage(),
       onGenerateRunbookDraft: () => state.generateOuiCeoRunbookDraft(),
       onStartRunbookVersion: (versionId) => state.startOuiRunbookVersion(versionId),
+      onCreateRoutineFromRunbook: (versionId) => state.createOuiRoutineFromRunbook(versionId),
+      onTriggerRoutine: (routineId) => state.triggerOuiRoutine(routineId),
+      onPauseRoutine: (routineId) => state.pauseOuiRoutine(routineId),
+      onResumeRoutine: (routineId) => state.resumeOuiRoutine(routineId),
       onResolveInboxItem: (itemId, action, responseText) =>
         state.resolveOuiInboxItem(itemId, action, responseText),
       onCompleteWorkNode: (nodeId) => state.completeOuiWorkNode(nodeId),
@@ -1741,6 +1848,10 @@ export function renderApp(state: AppViewState) {
         state.transitionOuiTaskReview(taskId, reviewState),
       onOpenCeoChat: () => state.setTab("ouiChat"),
       onOpenParallelChat: () => state.setTab("ouiChat"),
+      onOpenMeetingRoom: () => state.setTab("ouiMeetingRoom"),
+      onCeoPlanViewChange: (view) => {
+        state.ouiCompanyPlanView = view;
+      },
     });
   const renderOuiMeetingRoomSection = () =>
     renderOuiMeetingRoom({
@@ -1755,8 +1866,11 @@ export function renderApp(state: AppViewState) {
       participantCandidates: resolveOuiMeetingParticipantCandidates(state.agentsList),
       titleDraft: state.ouiMeetingTitleDraft,
       objectiveDraft: state.ouiMeetingObjectiveDraft,
+      inviteDialogOpen: state.ouiMeetingInviteDialogOpen,
+      settingsParticipantId: state.ouiMeetingSettingsParticipantId,
+      documentDraft: state.ouiMeetingDocumentDraft,
       participantDraftId: state.ouiMeetingParticipantDraftId,
-      draftParticipantIds: state.ouiMeetingDraftParticipantIds,
+      draftParticipants: state.ouiMeetingDraftParticipants,
       promptDraft: state.ouiMeetingPromptDraft,
       onRefresh: () => state.loadOuiMeetings(),
       onSelectMeeting: (meetingId) => state.selectOuiMeeting(meetingId),
@@ -1769,13 +1883,38 @@ export function renderApp(state: AppViewState) {
       onParticipantDraftChange: (next) => {
         state.ouiMeetingParticipantDraftId = next;
       },
+      onOpenInviteDialog: () => {
+        state.ouiMeetingSettingsParticipantId = null;
+        state.ouiMeetingInviteDialogOpen = true;
+      },
+      onCloseInviteDialog: () => {
+        state.ouiMeetingInviteDialogOpen = false;
+      },
+      onOpenParticipantSettings: (participantId) => {
+        state.ouiMeetingInviteDialogOpen = false;
+        state.ouiMeetingSettingsParticipantId = participantId;
+      },
+      onCloseParticipantSettings: () => {
+        state.ouiMeetingSettingsParticipantId = null;
+      },
       onAddParticipant: () => state.addOuiMeetingDraftParticipant(),
       onRemoveParticipant: (participantId) => state.removeOuiMeetingDraftParticipant(participantId),
+      onToggleParticipantMuted: (participantId) =>
+        state.toggleOuiMeetingParticipantMuted(participantId),
+      onSetParticipantSpeakingOrder: (participantId, speakingOrder) =>
+        state.setOuiMeetingParticipantSpeakingOrder(participantId, speakingOrder),
+      onSetParticipantThinkingIntensity: (participantId, thinkingIntensity) =>
+        state.setOuiMeetingParticipantThinkingIntensity(participantId, thinkingIntensity),
+      onDocumentDraftChange: (next) => {
+        state.ouiMeetingDocumentDraft = next;
+      },
+      onSaveDocument: () => state.saveOuiMeetingDocument(),
+      onReviseModeratorDocument: () => state.reviseOuiMeetingModerator(),
+      onRunNextRound: () => state.runOuiMeetingNextRound(),
       onCreateMeeting: () => state.createOuiMeeting(),
       onPromptDraftChange: (next) => {
         state.ouiMeetingPromptDraft = next;
       },
-      onSendTurn: () => state.sendOuiMeetingTurn(),
       onStartMeeting: (meetingId) => state.startOuiMeeting(meetingId),
       onEndMeeting: (meetingId) => state.endOuiMeeting(meetingId),
       onGenerateMinutes: (meetingId) => state.generateOuiMeetingMinutes(meetingId),
@@ -2388,7 +2527,11 @@ export function renderApp(state: AppViewState) {
           </div>
         </aside>
       </div>
-      <main class="content ${isChat ? "content--chat" : ""}">
+      <main
+        class="content ${isChat ? "content--chat" : ""} ${isCompanyCeoChat
+          ? "content--company-ceo-chat"
+          : ""}"
+      >
         ${state.updateStatusBanner
           ? html`<div class="callout ${state.updateStatusBanner.tone}" role="alert">
               ${state.updateStatusBanner.text}
@@ -2421,7 +2564,9 @@ export function renderApp(state: AppViewState) {
               </button>
             </div>`
           : nothing}
-        ${state.tab === "config"
+        ${state.tab === "config" ||
+        state.tab === "ouiCompany" ||
+        (state.tab === "ouiChat" && !state.chatParallelMode)
           ? nothing
           : html`<section
               class=${isChat && state.chatHeaderControlsHidden
@@ -3415,7 +3560,11 @@ export function renderApp(state: AppViewState) {
                   allowExternalEmbedUrls: state.allowExternalEmbedUrls,
                   assistantAttachmentAuthToken: resolveAssistantAttachmentAuthToken(state),
                   topChrome:
-                    state.tab === "ouiChat" ? renderOuiMainChatWindowHeader(state) : nothing,
+                    state.tab === "ouiChat"
+                      ? renderOuiMainChatWindowHeader(state, {
+                          actions: renderChatControls(state),
+                        })
+                      : nothing,
                   basePath: state.basePath ?? "",
                 });
               },

@@ -5,6 +5,7 @@ import type {
   OuiAgentStatus,
   OuiAppendMeetingMessageInput,
   OuiArtifactRecord,
+  OuiAuditLogRecord,
   OuiCompanyRecord,
   OuiCompanyStatus,
   OuiConversationRecord,
@@ -12,10 +13,15 @@ import type {
   OuiCostEventRecord,
   OuiAppendMessageInput,
   OuiCreateAgentInput,
+  OuiMeetingDiscussionState,
+  OuiMeetingModeratorDocument,
+  OuiMeetingRoundRecord,
   OuiCreateArtifactInput,
   OuiCreateCompanyInput,
   OuiCreateInboxItemInput,
   OuiCreateMeetingInput,
+  OuiCreateRoutineInput,
+  OuiCreateRoutineTriggerInput,
   OuiCompleteWorkNodeInput,
   OuiCompleteWorkNodeResult,
   OuiCreateRunbookDraftInput,
@@ -31,8 +37,11 @@ import type {
   OuiMessageRecord,
   OuiMessageRole,
   OuiProductStore,
+  OuiRecordAuditLogInput,
   OuiResolveInboxItemInput,
   OuiRoleRecord,
+  OuiRoutineRecord,
+  OuiRoutineTriggerRecord,
   OuiRunbookRecord,
   OuiRunbookStatus,
   OuiRunbookVersionRecord,
@@ -43,7 +52,20 @@ import type {
   OuiTaskReviewState,
   OuiTaskRunLink,
   OuiTaskStatus,
+  OuiUpdateMeetingParticipantsInput,
+  OuiUpdateMeetingDiscussionInput,
   OuiUpdateMeetingStatusInput,
+  OuiUpdateRoutineStatusInput,
+  OuiMarkRoutineTriggeredInput,
+  OuiUpdateWorkNodeRunStateInput,
+  OuiClaimWorkWakeupInput,
+  OuiEnqueueWorkWakeupInput,
+  OuiFinishWorkWakeupInput,
+  OuiHeartbeatWorkWakeupInput,
+  OuiRecoverWorkWakeupsInput,
+  OuiWorkWakeupLease,
+  OuiWorkWakeupRecord,
+  OuiWorkWakeupStatus,
   OuiWorkNodeRecord,
   OuiWorkNodeStatus,
 } from "../shared/product-types.ts";
@@ -86,6 +108,113 @@ function optionalString(value: unknown): string | null {
 
 function optionalNumber(value: unknown): number | null {
   return typeof value === "number" ? value : null;
+}
+
+function optionalBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function optionalMeetingThinkingIntensity(
+  value: unknown,
+): OuiMeetingRecord["participants"][number]["thinkingIntensity"] {
+  return value === "low" || value === "medium" || value === "high" ? value : null;
+}
+
+function createMeetingDiscussionState(input: {
+  title: string;
+  objective?: string | null;
+  createdAt: string;
+}): OuiMeetingDiscussionState {
+  const text = [
+    `Meeting topic: ${input.title}`,
+    input.objective ? `Context: ${input.objective}` : null,
+    "",
+    "Carry the discussion forward by preserving useful disagreement, correcting weak claims, and refining the current best answer.",
+  ]
+    .filter((line): line is string => line != null)
+    .join("\n");
+  return {
+    phase: "drafting",
+    currentRound: 0,
+    activeDocument: {
+      round: 0,
+      text,
+      updatedAt: input.createdAt,
+      updatedBy: "seed",
+    },
+    roundHistory: [],
+  };
+}
+
+function parseMeetingModeratorDocument(
+  value: unknown,
+  fallback: OuiMeetingModeratorDocument,
+): OuiMeetingModeratorDocument {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return fallback;
+  }
+  return {
+    round: optionalNumber((value as Record<string, unknown>).round) ?? fallback.round,
+    text: optionalString((value as Record<string, unknown>).text) ?? fallback.text,
+    updatedAt: optionalString((value as Record<string, unknown>).updatedAt) ?? fallback.updatedAt,
+    updatedBy:
+      (optionalString((value as Record<string, unknown>).updatedBy) as
+        | OuiMeetingModeratorDocument["updatedBy"]
+        | null) ?? fallback.updatedBy,
+  };
+}
+
+function parseMeetingRoundHistory(value: unknown): OuiMeetingRoundRecord[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const history: OuiMeetingRoundRecord[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const round = optionalNumber(record.round);
+    const sourceDocumentText = optionalString(record.sourceDocumentText);
+    const createdAt = optionalString(record.createdAt);
+    if (round == null || !sourceDocumentText || !createdAt) {
+      continue;
+    }
+    history.push({
+      round,
+      sourceDocumentText,
+      participantMessageIds: Array.isArray(record.participantMessageIds)
+        ? record.participantMessageIds.filter(
+            (messageId): messageId is string =>
+              typeof messageId === "string" && messageId.trim().length > 0,
+          )
+        : [],
+      moderatorMessageId: optionalString(record.moderatorMessageId),
+      createdAt,
+    });
+  }
+  return history;
+}
+
+function parseMeetingDiscussion(
+  value: unknown,
+  fallback: OuiMeetingDiscussionState,
+): OuiMeetingDiscussionState {
+  if (typeof value !== "string" || !value) {
+    return fallback;
+  }
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return fallback;
+  }
+  const record = parsed as Record<string, unknown>;
+  return {
+    phase:
+      (optionalString(record.phase) as OuiMeetingDiscussionState["phase"] | null) ?? fallback.phase,
+    currentRound: optionalNumber(record.currentRound) ?? fallback.currentRound,
+    activeDocument: parseMeetingModeratorDocument(record.activeDocument, fallback.activeDocument),
+    roundHistory: parseMeetingRoundHistory(record.roundHistory),
+  };
 }
 
 function requiredString(row: SqlRow, key: string): string {
@@ -272,6 +401,59 @@ function readRunbookVersion(row: SqlRow): OuiRunbookVersionRecord {
   };
 }
 
+function routineIntervalMs(schedule: OuiJsonObject): number | null {
+  const intervalMinutes = schedule.intervalMinutes;
+  if (typeof intervalMinutes === "number" && Number.isFinite(intervalMinutes)) {
+    return Math.max(1, intervalMinutes) * 60_000;
+  }
+  const intervalMs = schedule.intervalMs;
+  if (typeof intervalMs === "number" && Number.isFinite(intervalMs)) {
+    return Math.max(1_000, intervalMs);
+  }
+  return null;
+}
+
+function nextRoutineTriggerAt(schedule: OuiJsonObject, now: Date): string | null {
+  const intervalMs = routineIntervalMs(schedule);
+  return intervalMs ? new Date(now.getTime() + intervalMs).toISOString() : null;
+}
+
+function readRoutine(row: SqlRow): OuiRoutineRecord {
+  return {
+    id: requiredString(row, "id"),
+    companyId: requiredString(row, "company_id"),
+    runbookVersionId: requiredString(row, "runbook_version_id"),
+    title: requiredString(row, "title"),
+    description: optionalString(row.description),
+    status: requiredString(row, "status") as OuiRoutineRecord["status"],
+    triggerKind: requiredString(row, "trigger_kind") as OuiRoutineRecord["triggerKind"],
+    schedule: parseJsonObject(row.schedule_json),
+    concurrencyPolicy: requiredString(
+      row,
+      "concurrency_policy",
+    ) as OuiRoutineRecord["concurrencyPolicy"],
+    lastTriggeredAt: optionalString(row.last_triggered_at),
+    nextTriggerAt: optionalString(row.next_trigger_at),
+    createdAt: requiredString(row, "created_at"),
+    updatedAt: requiredString(row, "updated_at"),
+  };
+}
+
+function readRoutineTrigger(row: SqlRow): OuiRoutineTriggerRecord {
+  return {
+    id: requiredString(row, "id"),
+    routineId: requiredString(row, "routine_id"),
+    companyId: requiredString(row, "company_id"),
+    runbookVersionId: requiredString(row, "runbook_version_id"),
+    triggerKind: requiredString(row, "trigger_kind") as OuiRoutineTriggerRecord["triggerKind"],
+    status: requiredString(row, "status") as OuiRoutineTriggerRecord["status"],
+    payload: parseJsonObject(row.payload_json),
+    error: optionalString(row.error),
+    createdAt: requiredString(row, "created_at"),
+    updatedAt: requiredString(row, "updated_at"),
+  };
+}
+
 function readWorkNode(row: SqlRow): OuiWorkNodeRecord {
   return {
     id: requiredString(row, "id"),
@@ -314,6 +496,31 @@ function readInboxItem(row: SqlRow): OuiInboxItemRecord {
   };
 }
 
+function readWorkWakeup(row: SqlRow): OuiWorkWakeupRecord {
+  return {
+    id: requiredString(row, "id"),
+    companyId: requiredString(row, "company_id"),
+    runbookVersionId: optionalString(row.runbook_version_id),
+    workNodeId: optionalString(row.work_node_id),
+    agentId: optionalString(row.agent_id),
+    reason: requiredString(row, "reason") as OuiWorkWakeupRecord["reason"],
+    status: requiredString(row, "status") as OuiWorkWakeupStatus,
+    payload: parseJsonObject(row.payload_json),
+    attempts: requiredNumber(row, "attempts"),
+    maxAttempts: requiredNumber(row, "max_attempts"),
+    leaseOwner: optionalString(row.lease_owner),
+    leaseToken: optionalString(row.lease_token),
+    leaseExpiresAt: optionalString(row.lease_expires_at),
+    heartbeatAt: optionalString(row.heartbeat_at),
+    queuedAt: requiredString(row, "queued_at"),
+    startedAt: optionalString(row.started_at),
+    finishedAt: optionalString(row.finished_at),
+    error: optionalString(row.error),
+    createdAt: requiredString(row, "created_at"),
+    updatedAt: requiredString(row, "updated_at"),
+  };
+}
+
 function parseMeetingParticipants(value: unknown): OuiMeetingRecord["participants"] {
   const participants: OuiMeetingRecord["participants"] = [];
   for (const entry of parseJsonObjectArray(value)) {
@@ -332,6 +539,9 @@ function parseMeetingParticipants(value: unknown): OuiMeetingRecord["participant
       openclawAgentId: optionalString(entry.openclawAgentId),
       modelRef: optionalString(entry.modelRef),
       role: optionalString(entry.role),
+      muted: optionalBoolean(entry.muted),
+      speakingOrder: optionalNumber(entry.speakingOrder),
+      thinkingIntensity: optionalMeetingThinkingIntensity(entry.thinkingIntensity),
     });
   }
   return participants;
@@ -355,15 +565,34 @@ function readArtifact(row: SqlRow): OuiArtifactRecord {
   };
 }
 
-function readMeeting(row: SqlRow): OuiMeetingRecord {
+function readAuditLog(row: SqlRow): OuiAuditLogRecord {
   return {
     id: requiredString(row, "id"),
-    title: requiredString(row, "title"),
-    objective: optionalString(row.objective),
+    actorType: requiredString(row, "actor_type"),
+    actorId: requiredString(row, "actor_id"),
+    companyId: optionalString(row.company_id),
+    entityType: requiredString(row, "entity_type"),
+    entityId: requiredString(row, "entity_id"),
+    action: requiredString(row, "action"),
+    details: parseJsonObject(row.details_json),
+    createdAt: requiredString(row, "created_at"),
+  };
+}
+
+function readMeeting(row: SqlRow): OuiMeetingRecord {
+  const createdAt = requiredString(row, "created_at");
+  const title = requiredString(row, "title");
+  const objective = optionalString(row.objective);
+  const fallbackDiscussion = createMeetingDiscussionState({ title, objective, createdAt });
+  return {
+    id: requiredString(row, "id"),
+    title,
+    objective,
     status: requiredString(row, "status") as OuiMeetingStatus,
     participants: parseMeetingParticipants(row.participants_json),
+    discussion: parseMeetingDiscussion(row.discussion_json, fallbackDiscussion),
     minutesArtifactId: optionalString(row.minutes_artifact_id),
-    createdAt: requiredString(row, "created_at"),
+    createdAt,
     updatedAt: requiredString(row, "updated_at"),
     startedAt: optionalString(row.started_at),
     endedAt: optionalString(row.ended_at),
@@ -470,6 +699,17 @@ export class OuiSqliteProductStore implements OuiProductStore {
 
   async getCompany(companyId: string): Promise<OuiCompanyRecord | null> {
     return this.getCompanySync(companyId);
+  }
+
+  async deleteCompany(companyId: string): Promise<OuiCompanyRecord | null> {
+    return this.transaction(() => {
+      const company = this.getCompanySync(companyId);
+      if (!company) {
+        return null;
+      }
+      this.run("DELETE FROM oui_companies WHERE id = ?", companyId);
+      return company;
+    });
   }
 
   async listAgents(companyId: string): Promise<OuiAgentRecord[]> {
@@ -1005,7 +1245,9 @@ export class OuiSqliteProductStore implements OuiProductStore {
     const nowIso = toIsoDate(now);
     return this.transaction(() => {
       const version = this.requireRunbookVersion(versionId);
-      if (!["draft", "pending_approval", "approved", "active"].includes(version.status)) {
+      if (
+        !["draft", "pending_approval", "approved", "active", "completed"].includes(version.status)
+      ) {
         throw new Error(`Cannot start runbook version in ${version.status} state.`);
       }
       this.run(
@@ -1080,6 +1322,253 @@ export class OuiSqliteProductStore implements OuiProductStore {
     });
   }
 
+  async createRoutine(input: OuiCreateRoutineInput): Promise<OuiRoutineRecord> {
+    const nowDate = input.now ?? new Date();
+    const now = toIsoDate(nowDate);
+    const id = input.id ?? randomUUID();
+    const triggerKind = input.triggerKind ?? "schedule";
+    const schedule =
+      input.schedule ?? (triggerKind === "schedule" ? { intervalMinutes: 1440 } : {});
+    const status = input.status ?? "active";
+    const nextTriggerAt =
+      status === "active" && triggerKind === "schedule"
+        ? nextRoutineTriggerAt(schedule, nowDate)
+        : null;
+    return this.transaction(() => {
+      const company = this.requireCompany(input.companyId);
+      const version = this.requireRunbookVersion(input.runbookVersionId);
+      if (version.companyId !== company.id) {
+        throw new Error("Routine runbook reference must stay inside one company.");
+      }
+      this.run(
+        `
+          INSERT INTO oui_routines(
+            id, company_id, runbook_version_id, title, description, status,
+            trigger_kind, schedule_json, concurrency_policy, last_triggered_at,
+            next_trigger_at, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+          ON CONFLICT(company_id, runbook_version_id, title) DO UPDATE SET
+            description = excluded.description,
+            status = excluded.status,
+            trigger_kind = excluded.trigger_kind,
+            schedule_json = excluded.schedule_json,
+            concurrency_policy = excluded.concurrency_policy,
+            next_trigger_at = excluded.next_trigger_at,
+            updated_at = excluded.updated_at
+        `,
+        id,
+        company.id,
+        version.id,
+        input.title.trim() || version.objective,
+        input.description ?? null,
+        status,
+        triggerKind,
+        JSON.stringify(schedule),
+        input.concurrencyPolicy ?? "skip_if_active",
+        nextTriggerAt,
+        now,
+        now,
+      );
+      const routineRow = this.getOne(
+        `
+          SELECT * FROM oui_routines
+          WHERE company_id = ? AND runbook_version_id = ? AND title = ?
+          LIMIT 1
+        `,
+        company.id,
+        version.id,
+        input.title.trim() || version.objective,
+      );
+      if (!routineRow) {
+        throw new Error("Failed to create OUI routine.");
+      }
+      return readRoutine(routineRow);
+    });
+  }
+
+  async getRoutine(routineId: string): Promise<OuiRoutineRecord | null> {
+    return this.getRoutineSync(routineId);
+  }
+
+  async listRoutines(companyId?: string | null): Promise<OuiRoutineRecord[]> {
+    if (companyId) {
+      return this.getAll(
+        `
+          SELECT * FROM oui_routines
+          WHERE company_id = ?
+          ORDER BY updated_at DESC, id ASC
+        `,
+        companyId,
+      ).map(readRoutine);
+    }
+    return this.getAll(
+      `
+        SELECT * FROM oui_routines
+        ORDER BY updated_at DESC, id ASC
+      `,
+    ).map(readRoutine);
+  }
+
+  async listDueRoutines(now?: Date): Promise<OuiRoutineRecord[]> {
+    const nowIso = toIsoDate(now);
+    return this.getAll(
+      `
+        SELECT * FROM oui_routines
+        WHERE status = 'active'
+          AND trigger_kind = 'schedule'
+          AND next_trigger_at IS NOT NULL
+          AND next_trigger_at <= ?
+        ORDER BY next_trigger_at ASC, id ASC
+      `,
+      nowIso,
+    ).map(readRoutine);
+  }
+
+  async updateRoutineStatus(input: OuiUpdateRoutineStatusInput): Promise<OuiRoutineRecord> {
+    const nowDate = input.now ?? new Date();
+    const now = toIsoDate(nowDate);
+    return this.transaction(() => {
+      const routine = this.requireRoutine(input.routineId);
+      const nextTriggerAt =
+        input.status === "active" && routine.triggerKind === "schedule"
+          ? (routine.nextTriggerAt ?? nextRoutineTriggerAt(routine.schedule, nowDate))
+          : (routine.nextTriggerAt ?? null);
+      this.run(
+        `
+          UPDATE oui_routines
+          SET status = ?, next_trigger_at = ?, updated_at = ?
+          WHERE id = ?
+        `,
+        input.status,
+        nextTriggerAt,
+        now,
+        input.routineId,
+      );
+      return this.requireRoutine(input.routineId);
+    });
+  }
+
+  async markRoutineTriggered(input: OuiMarkRoutineTriggeredInput): Promise<OuiRoutineRecord> {
+    const nowDate = input.now ?? new Date();
+    const now = toIsoDate(nowDate);
+    return this.transaction(() => {
+      const routine = this.requireRoutine(input.routineId);
+      const triggerKind = input.triggerKind ?? routine.triggerKind;
+      const nextTriggerAt =
+        input.nextTriggerAt !== undefined
+          ? input.nextTriggerAt
+          : triggerKind === "schedule"
+            ? nextRoutineTriggerAt(routine.schedule, nowDate)
+            : (routine.nextTriggerAt ?? null);
+      this.run(
+        `
+          UPDATE oui_routines
+          SET last_triggered_at = ?, next_trigger_at = ?, updated_at = ?
+          WHERE id = ?
+        `,
+        now,
+        nextTriggerAt,
+        now,
+        routine.id,
+      );
+      return this.requireRoutine(routine.id);
+    });
+  }
+
+  async createRoutineTrigger(
+    input: OuiCreateRoutineTriggerInput,
+  ): Promise<OuiRoutineTriggerRecord> {
+    const now = toIsoDate(input.now);
+    const id = input.id ?? randomUUID();
+    return this.transaction(() => {
+      const routine = this.requireRoutine(input.routineId);
+      this.run(
+        `
+          INSERT INTO oui_routine_triggers(
+            id, routine_id, company_id, runbook_version_id, trigger_kind,
+            status, payload_json, error, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        id,
+        routine.id,
+        routine.companyId,
+        routine.runbookVersionId,
+        input.triggerKind ?? routine.triggerKind,
+        input.status,
+        JSON.stringify(input.payload ?? {}),
+        input.error ?? null,
+        now,
+        now,
+      );
+      return this.requireRoutineTrigger(id);
+    });
+  }
+
+  async listRoutineTriggers(routineId: string): Promise<OuiRoutineTriggerRecord[]> {
+    return this.getAll(
+      `
+        SELECT * FROM oui_routine_triggers
+        WHERE routine_id = ?
+        ORDER BY created_at DESC, id ASC
+      `,
+      routineId,
+    ).map(readRoutineTrigger);
+  }
+
+  async recordAuditLog(input: OuiRecordAuditLogInput): Promise<OuiAuditLogRecord> {
+    const now = toIsoDate(input.now);
+    const id = input.id ?? randomUUID();
+    this.run(
+      `
+        INSERT INTO oui_audit_log(
+          id, actor_type, actor_id, company_id, entity_type, entity_id,
+          action, details_json, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      id,
+      input.actorType ?? "system",
+      input.actorId ?? "oui",
+      input.companyId ?? null,
+      input.entityType,
+      input.entityId,
+      input.action,
+      JSON.stringify(input.details ?? {}),
+      now,
+    );
+    const row = this.getOne("SELECT * FROM oui_audit_log WHERE id = ?", id);
+    if (!row) {
+      throw new Error("Failed to record OUI audit log.");
+    }
+    return readAuditLog(row);
+  }
+
+  async listAuditLog(companyId?: string | null, limit = 80): Promise<OuiAuditLogRecord[]> {
+    const safeLimit = Math.max(1, Math.min(200, limit));
+    if (companyId) {
+      return this.getAll(
+        `
+          SELECT * FROM oui_audit_log
+          WHERE company_id = ?
+          ORDER BY created_at DESC, id ASC
+          LIMIT ?
+        `,
+        companyId,
+        safeLimit,
+      ).map(readAuditLog);
+    }
+    return this.getAll(
+      `
+        SELECT * FROM oui_audit_log
+        ORDER BY created_at DESC, id ASC
+        LIMIT ?
+      `,
+      safeLimit,
+    ).map(readAuditLog);
+  }
+
   async listWorkNodes(
     companyId: string,
     runbookVersionId?: string | null,
@@ -1087,12 +1576,71 @@ export class OuiSqliteProductStore implements OuiProductStore {
     return this.listWorkNodesSync(companyId, runbookVersionId);
   }
 
+  async getWorkNode(nodeId: string): Promise<OuiWorkNodeRecord | null> {
+    return this.getWorkNodeSync(nodeId);
+  }
+
+  async updateWorkNodeRunState(input: OuiUpdateWorkNodeRunStateInput): Promise<OuiWorkNodeRecord> {
+    const now = toIsoDate(input.now);
+    return this.transaction(() => {
+      const node = this.requireWorkNode(input.nodeId);
+      if (node.status === "done" || node.status === "skipped") {
+        throw new Error(`Cannot update OUI work node in ${node.status} state.`);
+      }
+      const summary = input.summary?.trim() || node.summary || null;
+      const output = input.output ?? node.output;
+      const runId = input.clearRunId ? null : (input.runId ?? node.runId ?? null);
+      const inboxItemId = input.clearInboxItemId
+        ? null
+        : (input.inboxItemId ?? node.inboxItemId ?? null);
+      this.run(
+        `
+          UPDATE oui_work_nodes
+          SET status = ?,
+              run_id = ?,
+              inbox_item_id = ?,
+              summary = ?,
+              output_json = ?,
+              updated_at = ?
+          WHERE id = ?
+        `,
+        input.status,
+        runId,
+        inboxItemId,
+        summary,
+        JSON.stringify(output),
+        now,
+        node.id,
+      );
+      const companyStatus =
+        input.status === "blocked"
+          ? "blocked"
+          : input.status === "waiting_user"
+            ? "waiting_user"
+            : "running";
+      this.run(
+        `
+          UPDATE oui_companies
+          SET status = ?,
+              current_stage = ?,
+              updated_at = ?
+          WHERE id = ?
+        `,
+        companyStatus,
+        node.title,
+        now,
+        node.companyId,
+      );
+      return this.requireWorkNode(node.id);
+    });
+  }
+
   async completeWorkNode(input: OuiCompleteWorkNodeInput): Promise<OuiCompleteWorkNodeResult> {
     const now = input.now ?? new Date();
     const nowIso = toIsoDate(now);
     return this.transaction(() => {
       const node = this.requireWorkNode(input.nodeId);
-      if (!["ready", "running", "done"].includes(node.status)) {
+      if (!["ready", "running", "waiting_user", "done"].includes(node.status)) {
         throw new Error(`Cannot complete OUI work node in ${node.status} state.`);
       }
       const version = this.requireRunbookVersion(node.runbookVersionId);
@@ -1334,6 +1882,264 @@ export class OuiSqliteProductStore implements OuiProductStore {
     return this.requireInboxItem(input.itemId);
   }
 
+  async enqueueWorkWakeup(input: OuiEnqueueWorkWakeupInput): Promise<OuiWorkWakeupRecord> {
+    const now = toIsoDate(input.now);
+    const id = input.id ?? randomUUID();
+    const maxAttempts = Math.max(1, Math.min(10, input.maxAttempts ?? 3));
+    return this.transaction(() => {
+      this.requireCompany(input.companyId);
+      if (input.runbookVersionId) {
+        const version = this.requireRunbookVersion(input.runbookVersionId);
+        if (version.companyId !== input.companyId) {
+          throw new Error("Wakeup runbook reference must stay inside one company.");
+        }
+      }
+      if (input.workNodeId) {
+        const node = this.requireWorkNode(input.workNodeId);
+        if (node.companyId !== input.companyId) {
+          throw new Error("Wakeup work-node reference must stay inside one company.");
+        }
+      }
+      if (input.agentId) {
+        const agent = this.requireAgent(input.agentId);
+        if (agent.companyId !== input.companyId) {
+          throw new Error("Wakeup agent reference must stay inside one company.");
+        }
+      }
+      this.run(
+        `
+          INSERT INTO oui_work_wakeups(
+            id, company_id, runbook_version_id, work_node_id, agent_id, reason, status,
+            payload_json, attempts, max_attempts, queued_at, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, 0, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            company_id = excluded.company_id,
+            runbook_version_id = excluded.runbook_version_id,
+            work_node_id = excluded.work_node_id,
+            agent_id = excluded.agent_id,
+            reason = excluded.reason,
+            status = CASE
+              WHEN oui_work_wakeups.status IN ('succeeded', 'failed', 'cancelled')
+                THEN 'queued'
+              ELSE oui_work_wakeups.status
+            END,
+            payload_json = excluded.payload_json,
+            attempts = CASE
+              WHEN oui_work_wakeups.status IN ('succeeded', 'failed', 'cancelled')
+                THEN 0
+              ELSE oui_work_wakeups.attempts
+            END,
+            max_attempts = excluded.max_attempts,
+            lease_owner = CASE
+              WHEN oui_work_wakeups.status IN ('succeeded', 'failed', 'cancelled')
+                THEN NULL
+              ELSE oui_work_wakeups.lease_owner
+            END,
+            lease_token = CASE
+              WHEN oui_work_wakeups.status IN ('succeeded', 'failed', 'cancelled')
+                THEN NULL
+              ELSE oui_work_wakeups.lease_token
+            END,
+            lease_expires_at = CASE
+              WHEN oui_work_wakeups.status IN ('succeeded', 'failed', 'cancelled')
+                THEN NULL
+              ELSE oui_work_wakeups.lease_expires_at
+            END,
+            heartbeat_at = CASE
+              WHEN oui_work_wakeups.status IN ('succeeded', 'failed', 'cancelled')
+                THEN NULL
+              ELSE oui_work_wakeups.heartbeat_at
+            END,
+            queued_at = CASE
+              WHEN oui_work_wakeups.status IN ('succeeded', 'failed', 'cancelled')
+                THEN excluded.queued_at
+              ELSE oui_work_wakeups.queued_at
+            END,
+            started_at = CASE
+              WHEN oui_work_wakeups.status IN ('succeeded', 'failed', 'cancelled')
+                THEN NULL
+              ELSE oui_work_wakeups.started_at
+            END,
+            finished_at = CASE
+              WHEN oui_work_wakeups.status IN ('succeeded', 'failed', 'cancelled')
+                THEN NULL
+              ELSE oui_work_wakeups.finished_at
+            END,
+            error = CASE
+              WHEN oui_work_wakeups.status IN ('succeeded', 'failed', 'cancelled')
+                THEN NULL
+              ELSE oui_work_wakeups.error
+            END,
+            updated_at = excluded.updated_at
+        `,
+        id,
+        input.companyId,
+        input.runbookVersionId ?? null,
+        input.workNodeId ?? null,
+        input.agentId ?? null,
+        input.reason,
+        JSON.stringify(input.payload ?? {}),
+        maxAttempts,
+        now,
+        now,
+        now,
+      );
+      return this.requireWorkWakeup(id);
+    });
+  }
+
+  async claimNextWorkWakeup(input: OuiClaimWorkWakeupInput): Promise<OuiWorkWakeupLease | null> {
+    const nowDate = input.now ?? new Date();
+    const nowIso = toIsoDate(nowDate);
+    const leaseMs = Math.max(1, input.leaseMs);
+    const leaseExpiresAt = new Date(nowDate.getTime() + leaseMs).toISOString();
+    return this.transaction(() => {
+      this.recoverExpiredWorkWakeupsSync(nowIso);
+      const row = this.getOne(
+        `
+          SELECT * FROM oui_work_wakeups
+          WHERE status = 'queued'
+          ORDER BY queued_at ASC, id ASC
+          LIMIT 1
+        `,
+      );
+      if (!row) {
+        return null;
+      }
+      const wakeup = readWorkWakeup(row);
+      const leaseToken = randomUUID();
+      const changed = this.run(
+        `
+          UPDATE oui_work_wakeups
+          SET status = 'running',
+              attempts = attempts + 1,
+              lease_owner = ?,
+              lease_token = ?,
+              lease_expires_at = ?,
+              heartbeat_at = ?,
+              started_at = COALESCE(started_at, ?),
+              error = NULL,
+              updated_at = ?
+          WHERE id = ? AND status = 'queued'
+        `,
+        input.workerId,
+        leaseToken,
+        leaseExpiresAt,
+        nowIso,
+        nowIso,
+        nowIso,
+        wakeup.id,
+      );
+      if (!changed) {
+        return null;
+      }
+      return { wakeup: this.requireWorkWakeup(wakeup.id), leaseToken };
+    });
+  }
+
+  async heartbeatWorkWakeupLease(
+    input: OuiHeartbeatWorkWakeupInput,
+  ): Promise<OuiWorkWakeupRecord | null> {
+    const nowDate = input.now ?? new Date();
+    const nowIso = toIsoDate(nowDate);
+    const leaseExpiresAt = new Date(nowDate.getTime() + Math.max(1, input.leaseMs)).toISOString();
+    const changed = this.run(
+      `
+        UPDATE oui_work_wakeups
+        SET lease_expires_at = ?,
+            heartbeat_at = ?,
+            updated_at = ?
+        WHERE id = ?
+          AND status = 'running'
+          AND lease_owner = ?
+          AND lease_token = ?
+      `,
+      leaseExpiresAt,
+      nowIso,
+      nowIso,
+      input.wakeupId,
+      input.workerId,
+      input.leaseToken,
+    );
+    return changed ? this.requireWorkWakeup(input.wakeupId) : null;
+  }
+
+  async finishWorkWakeup(input: OuiFinishWorkWakeupInput): Promise<OuiWorkWakeupRecord | null> {
+    const current = this.getWorkWakeupSync(input.wakeupId);
+    if (!current) {
+      return null;
+    }
+    if (
+      current.status === "succeeded" ||
+      current.status === "failed" ||
+      current.status === "cancelled"
+    ) {
+      return current;
+    }
+    const now = toIsoDate(input.now);
+    const changed = this.run(
+      `
+        UPDATE oui_work_wakeups
+        SET status = ?,
+            lease_owner = NULL,
+            lease_token = NULL,
+            lease_expires_at = NULL,
+            heartbeat_at = NULL,
+            finished_at = ?,
+            error = ?,
+            updated_at = ?
+        WHERE id = ?
+          AND status = 'running'
+          AND lease_owner = ?
+          AND lease_token = ?
+      `,
+      input.status,
+      now,
+      input.error ?? null,
+      now,
+      input.wakeupId,
+      input.workerId,
+      input.leaseToken,
+    );
+    return changed ? this.requireWorkWakeup(input.wakeupId) : null;
+  }
+
+  async recoverExpiredWorkWakeups(
+    input: OuiRecoverWorkWakeupsInput = {},
+  ): Promise<OuiWorkWakeupRecord[]> {
+    const now = toIsoDate(input.now);
+    return this.transaction(() => this.recoverExpiredWorkWakeupsSync(now));
+  }
+
+  async listWorkWakeups(
+    companyId: string,
+    status?: OuiWorkWakeupStatus,
+  ): Promise<OuiWorkWakeupRecord[]> {
+    const rows = status
+      ? this.getAll(
+          `
+            SELECT * FROM oui_work_wakeups
+            WHERE company_id = ? AND status = ?
+            ORDER BY updated_at DESC, id ASC
+          `,
+          companyId,
+          status,
+        )
+      : this.getAll(
+          `
+            SELECT * FROM oui_work_wakeups
+            WHERE company_id = ?
+            ORDER BY
+              CASE status WHEN 'queued' THEN 0 WHEN 'running' THEN 1 ELSE 2 END,
+              updated_at DESC,
+              id ASC
+          `,
+          companyId,
+        );
+    return rows.map(readWorkWakeup);
+  }
+
   async createArtifact(input: OuiCreateArtifactInput): Promise<OuiArtifactRecord> {
     return this.createArtifactSync(input);
   }
@@ -1430,17 +2236,23 @@ export class OuiSqliteProductStore implements OuiProductStore {
     }
     const now = toIsoDate(input.now);
     const id = input.id ?? randomUUID();
+    const discussion = createMeetingDiscussionState({
+      title,
+      objective: input.objective ?? null,
+      createdAt: now,
+    });
     this.run(
       `
         INSERT INTO oui_meetings(
-          id, title, objective, status, participants_json, created_at, updated_at
+          id, title, objective, status, participants_json, discussion_json, created_at, updated_at
         )
-        VALUES (?, ?, ?, 'draft', ?, ?, ?)
+        VALUES (?, ?, ?, 'draft', ?, ?, ?, ?)
       `,
       id,
       title,
       input.objective ?? null,
       JSON.stringify(input.participants ?? []),
+      JSON.stringify(discussion),
       now,
       now,
     );
@@ -1488,6 +2300,42 @@ export class OuiSqliteProductStore implements OuiProductStore {
       now,
       input.status,
       now,
+      now,
+      input.meetingId,
+    );
+    return this.requireMeeting(input.meetingId);
+  }
+
+  async updateMeetingParticipants(
+    input: OuiUpdateMeetingParticipantsInput,
+  ): Promise<OuiMeetingRecord> {
+    const now = toIsoDate(input.now);
+    this.requireMeeting(input.meetingId);
+    this.run(
+      `
+        UPDATE oui_meetings
+        SET participants_json = ?,
+            updated_at = ?
+        WHERE id = ?
+      `,
+      JSON.stringify(input.participants),
+      now,
+      input.meetingId,
+    );
+    return this.requireMeeting(input.meetingId);
+  }
+
+  async updateMeetingDiscussion(input: OuiUpdateMeetingDiscussionInput): Promise<OuiMeetingRecord> {
+    const now = toIsoDate(input.now);
+    this.requireMeeting(input.meetingId);
+    this.run(
+      `
+        UPDATE oui_meetings
+        SET discussion_json = ?,
+            updated_at = ?
+        WHERE id = ?
+      `,
+      JSON.stringify(input.discussion),
       now,
       input.meetingId,
     );
@@ -1776,9 +2624,13 @@ export class OuiSqliteProductStore implements OuiProductStore {
             stage_id = excluded.stage_id,
             title = excluded.title,
             node_type = excluded.node_type,
+            status = excluded.status,
             assigned_agent_id = excluded.assigned_agent_id,
             summary = excluded.summary,
             input_json = excluded.input_json,
+            output_json = '{}',
+            run_id = NULL,
+            inbox_item_id = NULL,
             updated_at = excluded.updated_at
         `,
         id,
@@ -1825,6 +2677,14 @@ export class OuiSqliteProductStore implements OuiProductStore {
     return company;
   }
 
+  private requireAgent(agentId: string): OuiAgentRecord {
+    const agent = this.getAgentSync(agentId);
+    if (!agent) {
+      throw new Error(`OUI agent not found: ${agentId}`);
+    }
+    return agent;
+  }
+
   private requireRunbook(runbookId: string): OuiRunbookRecord {
     const runbook = this.getRunbookSync(runbookId);
     if (!runbook) {
@@ -1865,6 +2725,22 @@ export class OuiSqliteProductStore implements OuiProductStore {
     return version;
   }
 
+  private requireRoutine(routineId: string): OuiRoutineRecord {
+    const routine = this.getRoutineSync(routineId);
+    if (!routine) {
+      throw new Error(`OUI routine not found: ${routineId}`);
+    }
+    return routine;
+  }
+
+  private requireRoutineTrigger(triggerId: string): OuiRoutineTriggerRecord {
+    const trigger = this.getRoutineTriggerSync(triggerId);
+    if (!trigger) {
+      throw new Error(`OUI routine trigger not found: ${triggerId}`);
+    }
+    return trigger;
+  }
+
   private requireWorkNode(nodeId: string): OuiWorkNodeRecord {
     const node = this.getWorkNodeSync(nodeId);
     if (!node) {
@@ -1879,6 +2755,14 @@ export class OuiSqliteProductStore implements OuiProductStore {
       throw new Error(`OUI inbox item not found: ${itemId}`);
     }
     return item;
+  }
+
+  private requireWorkWakeup(wakeupId: string): OuiWorkWakeupRecord {
+    const wakeup = this.getWorkWakeupSync(wakeupId);
+    if (!wakeup) {
+      throw new Error(`OUI work wakeup not found: ${wakeupId}`);
+    }
+    return wakeup;
   }
 
   private requireArtifact(artifactId: string): OuiArtifactRecord {
@@ -1938,6 +2822,16 @@ export class OuiSqliteProductStore implements OuiProductStore {
   private getRunbookVersionSync(versionId: string): OuiRunbookVersionRecord | null {
     const row = this.getOne("SELECT * FROM oui_runbook_versions WHERE id = ?", versionId);
     return row ? readRunbookVersion(row) : null;
+  }
+
+  private getRoutineSync(routineId: string): OuiRoutineRecord | null {
+    const row = this.getOne("SELECT * FROM oui_routines WHERE id = ?", routineId);
+    return row ? readRoutine(row) : null;
+  }
+
+  private getRoutineTriggerSync(triggerId: string): OuiRoutineTriggerRecord | null {
+    const row = this.getOne("SELECT * FROM oui_routine_triggers WHERE id = ?", triggerId);
+    return row ? readRoutineTrigger(row) : null;
   }
 
   private listRunbookVersionsSync(companyId: string): OuiRunbookVersionRecord[] {
@@ -2006,6 +2900,57 @@ export class OuiSqliteProductStore implements OuiProductStore {
   private getInboxItemSync(itemId: string): OuiInboxItemRecord | null {
     const row = this.getOne("SELECT * FROM oui_inbox_items WHERE id = ?", itemId);
     return row ? readInboxItem(row) : null;
+  }
+
+  private getWorkWakeupSync(wakeupId: string): OuiWorkWakeupRecord | null {
+    const row = this.getOne("SELECT * FROM oui_work_wakeups WHERE id = ?", wakeupId);
+    return row ? readWorkWakeup(row) : null;
+  }
+
+  private recoverExpiredWorkWakeupsSync(nowIso: string): OuiWorkWakeupRecord[] {
+    const expiredRows = this.getAll(
+      `
+        SELECT * FROM oui_work_wakeups
+        WHERE status = 'running'
+          AND lease_expires_at IS NOT NULL
+          AND lease_expires_at <= ?
+        ORDER BY lease_expires_at ASC, id ASC
+      `,
+      nowIso,
+    );
+    const recovered: OuiWorkWakeupRecord[] = [];
+    for (const row of expiredRows) {
+      const wakeup = readWorkWakeup(row);
+      const retryable = wakeup.attempts < wakeup.maxAttempts;
+      this.run(
+        `
+          UPDATE oui_work_wakeups
+          SET status = ?,
+              lease_owner = NULL,
+              lease_token = NULL,
+              lease_expires_at = NULL,
+              heartbeat_at = NULL,
+              queued_at = CASE WHEN ? = 'queued' THEN ? ELSE queued_at END,
+              finished_at = CASE WHEN ? = 'failed' THEN ? ELSE finished_at END,
+              error = CASE
+                WHEN ? = 'failed' THEN 'Work wakeup lease expired.'
+                ELSE error
+              END,
+              updated_at = ?
+          WHERE id = ? AND status = 'running'
+        `,
+        retryable ? "queued" : "failed",
+        retryable ? "queued" : "failed",
+        nowIso,
+        retryable ? "queued" : "failed",
+        nowIso,
+        retryable ? "queued" : "failed",
+        nowIso,
+        wakeup.id,
+      );
+      recovered.push(this.requireWorkWakeup(wakeup.id));
+    }
+    return recovered;
   }
 
   private getArtifactSync(artifactId: string): OuiArtifactRecord | null {

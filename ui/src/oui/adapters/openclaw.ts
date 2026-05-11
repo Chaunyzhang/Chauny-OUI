@@ -95,6 +95,60 @@ function waitForTerminalChatEvent(
   });
 }
 
+function extractText(value: unknown, depth = 0): string | null {
+  if (depth > 5) {
+    return null;
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  if (Array.isArray(value)) {
+    const text = value
+      .map((entry) => extractText(entry, depth + 1))
+      .filter((entry): entry is string => Boolean(entry))
+      .join("\n")
+      .trim();
+    return text || null;
+  }
+  if (!isRecord(value)) {
+    return null;
+  }
+  for (const key of ["message", "content", "text", "output", "final", "result", "summary"]) {
+    const text = extractText(value[key], depth + 1);
+    if (text) {
+      return text;
+    }
+  }
+  return null;
+}
+
+function shortSummary(text: string): string {
+  return text.length > 600 ? `${text.slice(0, 597).trimEnd()}...` : text;
+}
+
+function latestAssistantTextFromHistory(history: unknown): string | null {
+  if (!isRecord(history) || !Array.isArray(history.messages)) {
+    return null;
+  }
+  for (let index = history.messages.length - 1; index >= 0; index -= 1) {
+    const message = history.messages[index];
+    if (!isRecord(message) || message.role !== "assistant") {
+      continue;
+    }
+    const text = extractText(message);
+    if (text) {
+      return text;
+    }
+  }
+  return null;
+}
+
+function readStartedRunId(value: unknown): string | null {
+  return isRecord(value) && typeof value.runId === "string" && value.runId.trim()
+    ? value.runId.trim()
+    : null;
+}
+
 function eventToResult(event: Record<string, unknown> | null): OuiAdapterExecutionResult {
   if (!event) {
     return {
@@ -115,7 +169,12 @@ function eventToResult(event: Record<string, unknown> | null): OuiAdapterExecuti
       error: typeof event.error === "string" ? event.error : "OpenClaw chat error",
     };
   }
-  return { status: "succeeded", summary: "OpenClaw run completed.", resultJson: event };
+  const text = extractText(event);
+  return {
+    status: "succeeded",
+    summary: text ? shortSummary(text) : "OpenClaw run completed.",
+    resultJson: event,
+  };
 }
 
 export function createOpenClawAdapter(options: OpenClawAdapterOptions): OuiAdapterModule {
@@ -158,20 +217,46 @@ export function createOpenClawAdapter(options: OpenClawAdapterOptions): OuiAdapt
     async execute(ctx: OuiAdapterExecutionContext): Promise<OuiAdapterExecutionResult> {
       const input = extractRunInput(ctx.run.input);
       await ctx.log("info", `Dispatching OpenClaw run ${ctx.run.id}.`);
-      const terminalEvent = waitForTerminalChatEvent(
-        options.client,
-        ctx.run.id,
-        options.terminalEventTimeoutMs ?? 0,
-      );
-      await options.client.request("chat.send", {
+      const started = await options.client.request("chat.send", {
         sessionKey: input.sessionKey,
         ...(input.sessionId ? { sessionId: input.sessionId } : {}),
         message: input.message,
         deliver: false,
         idempotencyKey: ctx.run.id,
       });
-      const event = await terminalEvent;
-      return eventToResult(event);
+      const startedRunId = readStartedRunId(started) ?? ctx.run.id;
+      const waitResult = await options.client.request<{ status?: string; error?: string }>(
+        "agent.wait",
+        {
+          runId: startedRunId,
+          timeoutMs: options.terminalEventTimeoutMs ?? 0,
+        },
+      );
+      if (waitResult?.status === "error") {
+        return {
+          status: "failed",
+          summary: "OpenClaw run failed.",
+          error: waitResult.error ?? "OpenClaw agent.wait returned error.",
+          resultJson: waitResult as unknown as OuiJsonObject,
+        };
+      }
+      if (waitResult?.status !== "ok") {
+        return {
+          status: "blocked",
+          summary: "OpenClaw run did not reach a terminal state.",
+          resultJson: waitResult as unknown as OuiJsonObject,
+        };
+      }
+      const history = await options.client.request("chat.history", {
+        sessionKey: input.sessionKey,
+        limit: 16,
+      });
+      const text = latestAssistantTextFromHistory(history);
+      return {
+        status: "succeeded",
+        summary: text ? shortSummary(text) : "OpenClaw run completed.",
+        resultJson: isRecord(history) ? (history as OuiJsonObject) : {},
+      };
     },
     async cancel(ctx) {
       await options.client.request("chat.abort", {

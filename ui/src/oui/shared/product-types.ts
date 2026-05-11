@@ -14,6 +14,17 @@ export type OuiCompanyMode = OuiRunbookKind;
 
 export type OuiCompanyStatus = "idle" | "running" | "waiting_user" | "blocked" | "paused";
 
+export type OuiRoutineStatus = "active" | "paused" | "disabled";
+
+export type OuiRoutineTriggerKind = "manual" | "schedule" | "api" | "webhook";
+
+export type OuiRoutineConcurrencyPolicy =
+  | "coalesce_if_active"
+  | "skip_if_active"
+  | "always_enqueue";
+
+export type OuiRoutineTriggerStatus = "received" | "queued" | "skipped" | "succeeded" | "failed";
+
 export type OuiConversationStatus = "active" | "archived";
 
 export type OuiMessageRole = "user" | "assistant" | "system";
@@ -61,6 +72,15 @@ export type OuiWorkNodeStatus =
   | "done"
   | "skipped";
 
+export type OuiWorkWakeupStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+export type OuiWorkWakeupReason =
+  | "runbook_started"
+  | "inbox_resolved"
+  | "work_node_requested"
+  | "running_sync"
+  | "retry";
+
 export type OuiArtifactKind =
   | "runbook"
   | "meeting_minutes"
@@ -74,6 +94,8 @@ export type OuiArtifactKind =
 export type OuiMeetingStatus = "draft" | "active" | "ended";
 
 export type OuiMeetingMessageRole = "owner" | "participant" | "system";
+
+export type OuiMeetingDiscussionPhase = "drafting" | "awaiting_user" | "ended";
 
 export type OuiCompanyRecord = {
   id: string;
@@ -215,6 +237,47 @@ export type OuiRunbookVersionRecord = {
   updatedAt: string;
 };
 
+export type OuiRoutineRecord = {
+  id: string;
+  companyId: string;
+  runbookVersionId: string;
+  title: string;
+  description?: string | null;
+  status: OuiRoutineStatus;
+  triggerKind: OuiRoutineTriggerKind;
+  schedule: OuiJsonObject;
+  concurrencyPolicy: OuiRoutineConcurrencyPolicy;
+  lastTriggeredAt?: string | null;
+  nextTriggerAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type OuiRoutineTriggerRecord = {
+  id: string;
+  routineId: string;
+  companyId: string;
+  runbookVersionId: string;
+  triggerKind: OuiRoutineTriggerKind;
+  status: OuiRoutineTriggerStatus;
+  payload: OuiJsonObject;
+  createdAt: string;
+  updatedAt: string;
+  error?: string | null;
+};
+
+export type OuiAuditLogRecord = {
+  id: string;
+  actorType: string;
+  actorId: string;
+  companyId?: string | null;
+  entityType: string;
+  entityId: string;
+  action: string;
+  details: OuiJsonObject;
+  createdAt: string;
+};
+
 export type OuiWorkNodeRecord = {
   id: string;
   companyId: string;
@@ -253,6 +316,29 @@ export type OuiInboxItemRecord = {
   updatedAt: string;
 };
 
+export type OuiWorkWakeupRecord = {
+  id: string;
+  companyId: string;
+  runbookVersionId?: string | null;
+  workNodeId?: string | null;
+  agentId?: string | null;
+  reason: OuiWorkWakeupReason;
+  status: OuiWorkWakeupStatus;
+  payload: OuiJsonObject;
+  attempts: number;
+  maxAttempts: number;
+  leaseOwner?: string | null;
+  leaseToken?: string | null;
+  leaseExpiresAt?: string | null;
+  heartbeatAt?: string | null;
+  queuedAt: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type OuiArtifactRecord = {
   id: string;
   companyId?: string | null;
@@ -278,6 +364,31 @@ export type OuiMeetingParticipant = {
   openclawAgentId?: string | null;
   modelRef?: string | null;
   role?: string | null;
+  muted?: boolean | null;
+  speakingOrder?: number | null;
+  thinkingIntensity?: "low" | "medium" | "high" | null;
+};
+
+export type OuiMeetingModeratorDocument = {
+  round: number;
+  text: string;
+  updatedAt: string;
+  updatedBy: "seed" | "moderator" | "user";
+};
+
+export type OuiMeetingRoundRecord = {
+  round: number;
+  sourceDocumentText: string;
+  participantMessageIds: string[];
+  moderatorMessageId?: string | null;
+  createdAt: string;
+};
+
+export type OuiMeetingDiscussionState = {
+  phase: OuiMeetingDiscussionPhase;
+  currentRound: number;
+  activeDocument: OuiMeetingModeratorDocument;
+  roundHistory: OuiMeetingRoundRecord[];
 };
 
 export type OuiMeetingRecord = {
@@ -286,6 +397,7 @@ export type OuiMeetingRecord = {
   objective?: string | null;
   status: OuiMeetingStatus;
   participants: OuiMeetingParticipant[];
+  discussion: OuiMeetingDiscussionState;
   minutesArtifactId?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -326,7 +438,9 @@ export type OuiCompanySummary = {
   company: OuiCompanyRecord;
   ceo: OuiAgentRecord | null;
   taskCount: number;
+  completedTaskCount: number;
   openInboxCount: number;
+  tokenUsageTotal: number;
   activeRunbook: OuiRunbookRecord | null;
   latestActivityAt: string;
 };
@@ -354,10 +468,12 @@ export type OuiCompanyDetail = {
   tasks: OuiTaskRecord[];
   runbooks: OuiRunbookRecord[];
   runbookVersions: OuiRunbookVersionRecord[];
+  routines: OuiRoutineRecord[];
   activeRunbookVersion: OuiRunbookVersionRecord | null;
   workNodes: OuiWorkNodeRecord[];
   inboxItems: OuiInboxItemRecord[];
   artifacts: OuiArtifactRecord[];
+  auditLog: OuiAuditLogRecord[];
   controlRoom: OuiControlRoomReadModel;
 };
 
@@ -486,12 +602,104 @@ export type OuiCreateInboxItemInput = {
   now?: Date;
 };
 
+export type OuiCreateRoutineInput = {
+  id?: string;
+  companyId: string;
+  runbookVersionId: string;
+  title: string;
+  description?: string | null;
+  triggerKind?: OuiRoutineTriggerKind;
+  schedule?: OuiJsonObject;
+  concurrencyPolicy?: OuiRoutineConcurrencyPolicy;
+  status?: OuiRoutineStatus;
+  now?: Date;
+};
+
+export type OuiUpdateRoutineStatusInput = {
+  routineId: string;
+  status: OuiRoutineStatus;
+  now?: Date;
+};
+
+export type OuiMarkRoutineTriggeredInput = {
+  routineId: string;
+  triggerKind?: OuiRoutineTriggerKind;
+  nextTriggerAt?: string | null;
+  now?: Date;
+};
+
+export type OuiCreateRoutineTriggerInput = {
+  id?: string;
+  routineId: string;
+  status: OuiRoutineTriggerStatus;
+  triggerKind?: OuiRoutineTriggerKind;
+  payload?: OuiJsonObject;
+  error?: string | null;
+  now?: Date;
+};
+
+export type OuiRecordAuditLogInput = {
+  id?: string;
+  actorType?: string;
+  actorId?: string;
+  companyId?: string | null;
+  entityType: string;
+  entityId: string;
+  action: string;
+  details?: OuiJsonObject;
+  now?: Date;
+};
+
 export type OuiResolveInboxItemInput = {
   itemId: string;
   action: OuiInboxResolutionAction;
   responseText?: string | null;
   actorId?: string | null;
   now?: Date;
+};
+
+export type OuiEnqueueWorkWakeupInput = {
+  id?: string;
+  companyId: string;
+  runbookVersionId?: string | null;
+  workNodeId?: string | null;
+  agentId?: string | null;
+  reason: OuiWorkWakeupReason;
+  payload?: OuiJsonObject;
+  maxAttempts?: number;
+  now?: Date;
+};
+
+export type OuiClaimWorkWakeupInput = {
+  workerId: string;
+  leaseMs: number;
+  now?: Date;
+};
+
+export type OuiHeartbeatWorkWakeupInput = {
+  wakeupId: string;
+  workerId: string;
+  leaseToken: string;
+  leaseMs: number;
+  now?: Date;
+};
+
+export type OuiFinishWorkWakeupInput = {
+  wakeupId: string;
+  workerId: string;
+  leaseToken: string;
+  status: Extract<OuiWorkWakeupStatus, "succeeded" | "failed" | "cancelled">;
+  error?: string | null;
+  now?: Date;
+};
+
+export type OuiRecoverWorkWakeupsInput = {
+  now?: Date;
+};
+
+export type OuiWorkWakeupLease = {
+  wakeup: OuiWorkWakeupRecord;
+  leaseToken: string;
 };
 
 export type OuiCreateArtifactInput = {
@@ -530,6 +738,18 @@ export type OuiUpdateMeetingStatusInput = {
   now?: Date;
 };
 
+export type OuiUpdateMeetingParticipantsInput = {
+  meetingId: string;
+  participants: OuiMeetingParticipant[];
+  now?: Date;
+};
+
+export type OuiUpdateMeetingDiscussionInput = {
+  meetingId: string;
+  discussion: OuiMeetingDiscussionState;
+  now?: Date;
+};
+
 export type OuiAppendMeetingMessageInput = {
   id?: string;
   meetingId: string;
@@ -543,6 +763,18 @@ export type OuiAppendMeetingMessageInput = {
 export type OuiCompleteWorkNodeInput = {
   nodeId: string;
   completedBy?: string | null;
+  summary?: string | null;
+  output?: OuiJsonObject;
+  now?: Date;
+};
+
+export type OuiUpdateWorkNodeRunStateInput = {
+  nodeId: string;
+  status: Extract<OuiWorkNodeStatus, "ready" | "running" | "blocked" | "waiting_user">;
+  runId?: string | null;
+  inboxItemId?: string | null;
+  clearRunId?: boolean;
+  clearInboxItemId?: boolean;
   summary?: string | null;
   output?: OuiJsonObject;
   now?: Date;
@@ -588,6 +820,7 @@ export type OuiProductStore = {
     ceo: OuiAgentRecord;
   }>;
   getCompany(companyId: string): Promise<OuiCompanyRecord | null>;
+  deleteCompany(companyId: string): Promise<OuiCompanyRecord | null>;
   listAgents(companyId: string): Promise<OuiAgentRecord[]>;
   getAgent(agentId: string): Promise<OuiAgentRecord | null>;
   createAgent(input: OuiCreateAgentInput): Promise<OuiAgentRecord>;
@@ -647,16 +880,36 @@ export type OuiProductStore = {
     startedBy: string,
     now?: Date,
   ): Promise<OuiStartRunbookVersionResult>;
+  createRoutine(input: OuiCreateRoutineInput): Promise<OuiRoutineRecord>;
+  getRoutine(routineId: string): Promise<OuiRoutineRecord | null>;
+  listRoutines(companyId?: string | null): Promise<OuiRoutineRecord[]>;
+  listDueRoutines(now?: Date): Promise<OuiRoutineRecord[]>;
+  updateRoutineStatus(input: OuiUpdateRoutineStatusInput): Promise<OuiRoutineRecord>;
+  markRoutineTriggered(input: OuiMarkRoutineTriggeredInput): Promise<OuiRoutineRecord>;
+  createRoutineTrigger(input: OuiCreateRoutineTriggerInput): Promise<OuiRoutineTriggerRecord>;
+  listRoutineTriggers(routineId: string): Promise<OuiRoutineTriggerRecord[]>;
+  recordAuditLog(input: OuiRecordAuditLogInput): Promise<OuiAuditLogRecord>;
+  listAuditLog(companyId?: string | null, limit?: number): Promise<OuiAuditLogRecord[]>;
   listWorkNodes(companyId: string, runbookVersionId?: string | null): Promise<OuiWorkNodeRecord[]>;
+  getWorkNode(nodeId: string): Promise<OuiWorkNodeRecord | null>;
+  updateWorkNodeRunState(input: OuiUpdateWorkNodeRunStateInput): Promise<OuiWorkNodeRecord>;
   createInboxItem(input: OuiCreateInboxItemInput): Promise<OuiInboxItemRecord>;
   listInboxItems(companyId: string, status?: OuiInboxItemStatus): Promise<OuiInboxItemRecord[]>;
   resolveInboxItem(input: OuiResolveInboxItemInput): Promise<OuiInboxItemRecord>;
+  enqueueWorkWakeup(input: OuiEnqueueWorkWakeupInput): Promise<OuiWorkWakeupRecord>;
+  claimNextWorkWakeup(input: OuiClaimWorkWakeupInput): Promise<OuiWorkWakeupLease | null>;
+  heartbeatWorkWakeupLease(input: OuiHeartbeatWorkWakeupInput): Promise<OuiWorkWakeupRecord | null>;
+  finishWorkWakeup(input: OuiFinishWorkWakeupInput): Promise<OuiWorkWakeupRecord | null>;
+  recoverExpiredWorkWakeups(input?: OuiRecoverWorkWakeupsInput): Promise<OuiWorkWakeupRecord[]>;
+  listWorkWakeups(companyId: string, status?: OuiWorkWakeupStatus): Promise<OuiWorkWakeupRecord[]>;
   createArtifact(input: OuiCreateArtifactInput): Promise<OuiArtifactRecord>;
   listArtifacts(filter?: OuiListArtifactsFilter): Promise<OuiArtifactRecord[]>;
   createMeeting(input: OuiCreateMeetingInput): Promise<OuiMeetingRecord>;
   getMeeting(meetingId: string): Promise<OuiMeetingRecord | null>;
   listMeetings(): Promise<OuiMeetingRecord[]>;
   updateMeetingStatus(input: OuiUpdateMeetingStatusInput): Promise<OuiMeetingRecord>;
+  updateMeetingParticipants(input: OuiUpdateMeetingParticipantsInput): Promise<OuiMeetingRecord>;
+  updateMeetingDiscussion(input: OuiUpdateMeetingDiscussionInput): Promise<OuiMeetingRecord>;
   appendMeetingMessage(input: OuiAppendMeetingMessageInput): Promise<OuiMeetingMessageRecord>;
   listMeetingMessages(meetingId: string): Promise<OuiMeetingMessageRecord[]>;
   completeWorkNode(input: OuiCompleteWorkNodeInput): Promise<OuiCompleteWorkNodeResult>;

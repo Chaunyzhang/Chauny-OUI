@@ -1,6 +1,7 @@
 import type {
   OuiAgentRecord,
   OuiArtifactRecord,
+  OuiAuditLogRecord,
   OuiCompanyRecord,
   OuiCompanySummary,
   OuiControlRoomReadModel,
@@ -9,8 +10,10 @@ import type {
   OuiInboxResolutionAction,
   OuiInboxItemRecord,
   OuiMeetingMessageRecord,
+  OuiMeetingParticipant,
   OuiMeetingRecord,
   OuiMessageRecord,
+  OuiRoutineRecord,
   OuiRunbookRecord,
   OuiRunbookVersionRecord,
   OuiTaskRecord,
@@ -72,6 +75,7 @@ import type {
 } from "./types.ts";
 import type { ChatAttachment, ChatQueueItem } from "./ui-types.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
+import type { OuiCompanyPlanView, OuiCompanySection } from "./views/oui-company.ts";
 import type { SessionLogEntry } from "./views/usage.ts";
 
 export type AppViewState = {
@@ -462,6 +466,8 @@ export type AppViewState = {
     ouiCompanyApiAvailable: boolean;
     ouiCompanyError: string | null;
     ouiCompanyMessage: OuiCompanyMessage | null;
+    ouiCompanyActiveSection: OuiCompanySection;
+    ouiCompanyPlanView: OuiCompanyPlanView;
     ouiCompanySummaries: OuiCompanySummary[];
     ouiCompanyRecord: OuiCompanyRecord | null;
     ouiCompanyAgents: OuiAgentRecord[];
@@ -470,10 +476,12 @@ export type AppViewState = {
     ouiCompanyTasks: OuiTaskRecord[];
     ouiCompanyRunbooks: OuiRunbookRecord[];
     ouiCompanyRunbookVersions: OuiRunbookVersionRecord[];
+    ouiCompanyRoutines: OuiRoutineRecord[];
     ouiCompanyActiveRunbookVersion: OuiRunbookVersionRecord | null;
     ouiCompanyWorkNodes: OuiWorkNodeRecord[];
     ouiCompanyInboxItems: OuiInboxItemRecord[];
     ouiCompanyArtifacts: OuiArtifactRecord[];
+    ouiCompanyAuditLog: OuiAuditLogRecord[];
     ouiCompanyControlRoom: OuiControlRoomReadModel | null;
     ouiCompanyAdapters: OuiEmployeeAdapterPreview[];
     ouiCompanyTimeline: OuiTaskTimeline | null;
@@ -495,8 +503,11 @@ export type AppViewState = {
     ouiMeetingArtifacts: OuiArtifactRecord[];
     ouiMeetingTitleDraft: string;
     ouiMeetingObjectiveDraft: string;
+    ouiMeetingInviteDialogOpen: boolean;
+    ouiMeetingSettingsParticipantId: string | null;
+    ouiMeetingDocumentDraft: string;
     ouiMeetingParticipantDraftId: string;
-    ouiMeetingDraftParticipantIds: string[];
+    ouiMeetingDraftParticipants: OuiMeetingParticipant[];
     ouiMeetingPromptDraft: string;
     client: GatewayBrowserClient | null;
     refreshSessionsAfterChat: Set<string>;
@@ -521,9 +532,14 @@ export type AppViewState = {
     loadOuiCompany: () => Promise<void>;
     selectOuiCompany: (companyId: string) => Promise<void>;
     createOuiCompany: () => Promise<void>;
+    deleteOuiCompany: (companyId: string) => Promise<void>;
     sendOuiCeoMessage: () => Promise<void>;
     generateOuiCeoRunbookDraft: () => Promise<void>;
     startOuiRunbookVersion: (versionId: string) => Promise<void>;
+    createOuiRoutineFromRunbook: (versionId: string) => Promise<void>;
+    triggerOuiRoutine: (routineId: string) => Promise<void>;
+    pauseOuiRoutine: (routineId: string) => Promise<void>;
+    resumeOuiRoutine: (routineId: string) => Promise<void>;
     resolveOuiInboxItem: (
       itemId: string,
       action: OuiInboxResolutionAction,
@@ -538,8 +554,20 @@ export type AppViewState = {
     createOuiTaskFromParallelPane: (paneId: string) => Promise<void>;
     loadOuiMeetings: () => Promise<void>;
     selectOuiMeeting: (meetingId: string) => Promise<void>;
-    addOuiMeetingDraftParticipant: () => void;
-    removeOuiMeetingDraftParticipant: (participantId: string) => void;
+    addOuiMeetingDraftParticipant: () => Promise<void>;
+    removeOuiMeetingDraftParticipant: (participantId: string) => Promise<void>;
+    toggleOuiMeetingParticipantMuted: (participantId: string) => Promise<void>;
+    setOuiMeetingParticipantSpeakingOrder: (
+      participantId: string,
+      speakingOrder: number,
+    ) => Promise<void>;
+    setOuiMeetingParticipantThinkingIntensity: (
+      participantId: string,
+      thinkingIntensity: "low" | "medium" | "high",
+    ) => Promise<void>;
+    saveOuiMeetingDocument: () => Promise<void>;
+    reviseOuiMeetingModerator: () => Promise<void>;
+    runOuiMeetingNextRound: () => Promise<void>;
     createOuiMeeting: () => Promise<void>;
     startOuiMeeting: (meetingId: string) => Promise<void>;
     endOuiMeeting: (meetingId: string) => Promise<void>;

@@ -94,17 +94,22 @@ import {
   assignOuiTask as assignOuiTaskInternal,
   completeOuiWorkNode as completeOuiWorkNodeInternal,
   createOuiCompany as createOuiCompanyInternal,
+  createOuiRoutineFromRunbook as createOuiRoutineFromRunbookInternal,
   createOuiTask as createOuiTaskInternal,
   createOuiTaskFromParallelPane as createOuiTaskFromParallelPaneInternal,
+  deleteOuiCompany as deleteOuiCompanyInternal,
   generateOuiCeoRunbookDraft as generateOuiCeoRunbookDraftInternal,
   loadOuiCompany as loadOuiCompanyInternal,
+  pauseOuiRoutine as pauseOuiRoutineInternal,
   selectOuiCompany as selectOuiCompanyInternal,
   queueOuiTaskRun as queueOuiTaskRunInternal,
   resolveOuiInboxItem as resolveOuiInboxItemInternal,
+  resumeOuiRoutine as resumeOuiRoutineInternal,
   selectOuiTask as selectOuiTaskInternal,
   sendOuiCeoMessage as sendOuiCeoMessageInternal,
   startOuiRunbookVersion as startOuiRunbookVersionInternal,
   transitionOuiTaskReview as transitionOuiTaskReviewInternal,
+  triggerOuiRoutine as triggerOuiRoutineInternal,
   type OuiCompanyMessage,
 } from "./controllers/oui-company.ts";
 import {
@@ -114,9 +119,15 @@ import {
   generateOuiMeetingMinutes as generateOuiMeetingMinutesInternal,
   loadOuiMeetings as loadOuiMeetingsInternal,
   removeOuiMeetingDraftParticipant as removeOuiMeetingDraftParticipantInternal,
+  reviseOuiMeetingModerator as reviseOuiMeetingModeratorInternal,
+  runOuiMeetingNextRound as runOuiMeetingNextRoundInternal,
+  saveOuiMeetingDocument as saveOuiMeetingDocumentInternal,
   selectOuiMeeting as selectOuiMeetingInternal,
   sendOuiMeetingTurn as sendOuiMeetingTurnInternal,
+  setOuiMeetingParticipantThinkingIntensity as setOuiMeetingParticipantThinkingIntensityInternal,
+  setOuiMeetingParticipantSpeakingOrder as setOuiMeetingParticipantSpeakingOrderInternal,
   startOuiMeeting as startOuiMeetingInternal,
+  toggleOuiMeetingParticipantMuted as toggleOuiMeetingParticipantMutedInternal,
   type OuiMeetingRoomMessage,
 } from "./controllers/oui-meeting-room.ts";
 import type {
@@ -161,6 +172,7 @@ import type {
 import { type ChatAttachment, type ChatQueueItem, type CronFormState } from "./ui-types.ts";
 import { generateUUID } from "./uuid.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
+import type { OuiCompanyPlanView, OuiCompanySection } from "./views/oui-company.ts";
 
 declare global {
   interface Window {
@@ -573,6 +585,8 @@ export class OpenClawApp extends LitElement {
   @state() ouiCompanyApiAvailable = false;
   @state() ouiCompanyError: string | null = null;
   @state() ouiCompanyMessage: OuiCompanyMessage | null = null;
+  @state() ouiCompanyActiveSection: OuiCompanySection = "dashboard";
+  @state() ouiCompanyPlanView: OuiCompanyPlanView = "text";
   @state()
   ouiCompanySummaries: import("../oui/shared/product-types.ts").OuiCompanySummary[] = [];
   @state() ouiCompanyRecord: import("../oui/shared/product-types.ts").OuiCompanyRecord | null =
@@ -586,6 +600,7 @@ export class OpenClawApp extends LitElement {
   @state()
   ouiCompanyRunbookVersions: import("../oui/shared/product-types.ts").OuiRunbookVersionRecord[] =
     [];
+  @state() ouiCompanyRoutines: import("../oui/shared/product-types.ts").OuiRoutineRecord[] = [];
   @state()
   ouiCompanyActiveRunbookVersion:
     | import("../oui/shared/product-types.ts").OuiRunbookVersionRecord
@@ -593,6 +608,7 @@ export class OpenClawApp extends LitElement {
   @state() ouiCompanyWorkNodes: import("../oui/shared/product-types.ts").OuiWorkNodeRecord[] = [];
   @state() ouiCompanyInboxItems: import("../oui/shared/product-types.ts").OuiInboxItemRecord[] = [];
   @state() ouiCompanyArtifacts: import("../oui/shared/product-types.ts").OuiArtifactRecord[] = [];
+  @state() ouiCompanyAuditLog: import("../oui/shared/product-types.ts").OuiAuditLogRecord[] = [];
   @state()
   ouiCompanyControlRoom: import("../oui/shared/product-types.ts").OuiControlRoomReadModel | null =
     null;
@@ -619,8 +635,13 @@ export class OpenClawApp extends LitElement {
   @state() ouiMeetingArtifacts: import("../oui/shared/product-types.ts").OuiArtifactRecord[] = [];
   @state() ouiMeetingTitleDraft = "";
   @state() ouiMeetingObjectiveDraft = "";
+  @state() ouiMeetingInviteDialogOpen = false;
+  @state() ouiMeetingSettingsParticipantId: string | null = null;
+  @state() ouiMeetingDocumentDraft = "";
   @state() ouiMeetingParticipantDraftId = "";
-  @state() ouiMeetingDraftParticipantIds: string[] = [];
+  @state()
+  ouiMeetingDraftParticipants: import("../oui/shared/product-types.ts").OuiMeetingParticipant[] =
+    [];
   @state() ouiMeetingPromptDraft = "";
 
   @state() skillsLoading = false;
@@ -947,6 +968,10 @@ export class OpenClawApp extends LitElement {
     await createOuiCompanyInternal(this);
   }
 
+  async deleteOuiCompany(companyId: string) {
+    await deleteOuiCompanyInternal(this, companyId);
+  }
+
   async sendOuiCeoMessage() {
     await sendOuiCeoMessageInternal(this);
   }
@@ -957,6 +982,22 @@ export class OpenClawApp extends LitElement {
 
   async startOuiRunbookVersion(versionId: string) {
     await startOuiRunbookVersionInternal(this, versionId);
+  }
+
+  async createOuiRoutineFromRunbook(versionId: string) {
+    await createOuiRoutineFromRunbookInternal(this, versionId);
+  }
+
+  async triggerOuiRoutine(routineId: string) {
+    await triggerOuiRoutineInternal(this, routineId);
+  }
+
+  async pauseOuiRoutine(routineId: string) {
+    await pauseOuiRoutineInternal(this, routineId);
+  }
+
+  async resumeOuiRoutine(routineId: string) {
+    await resumeOuiRoutineInternal(this, routineId);
   }
 
   async resolveOuiInboxItem(
@@ -979,12 +1020,39 @@ export class OpenClawApp extends LitElement {
     await selectOuiMeetingInternal(this, meetingId);
   }
 
-  addOuiMeetingDraftParticipant() {
-    addOuiMeetingDraftParticipantInternal(this);
+  async addOuiMeetingDraftParticipant() {
+    await addOuiMeetingDraftParticipantInternal(this);
   }
 
-  removeOuiMeetingDraftParticipant(participantId: string) {
-    removeOuiMeetingDraftParticipantInternal(this, participantId);
+  async removeOuiMeetingDraftParticipant(participantId: string) {
+    await removeOuiMeetingDraftParticipantInternal(this, participantId);
+  }
+
+  async toggleOuiMeetingParticipantMuted(participantId: string) {
+    await toggleOuiMeetingParticipantMutedInternal(this, participantId);
+  }
+
+  async setOuiMeetingParticipantSpeakingOrder(participantId: string, speakingOrder: number) {
+    await setOuiMeetingParticipantSpeakingOrderInternal(this, participantId, speakingOrder);
+  }
+
+  async setOuiMeetingParticipantThinkingIntensity(
+    participantId: string,
+    thinkingIntensity: "low" | "medium" | "high",
+  ) {
+    await setOuiMeetingParticipantThinkingIntensityInternal(this, participantId, thinkingIntensity);
+  }
+
+  async saveOuiMeetingDocument() {
+    await saveOuiMeetingDocumentInternal(this);
+  }
+
+  async reviseOuiMeetingModerator() {
+    await reviseOuiMeetingModeratorInternal(this);
+  }
+
+  async runOuiMeetingNextRound() {
+    await runOuiMeetingNextRoundInternal(this);
   }
 
   async createOuiMeeting() {

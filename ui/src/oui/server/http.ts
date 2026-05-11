@@ -18,11 +18,16 @@ import type {
   OuiInboxResolutionAction,
   OuiInboxItemStatus,
   OuiInboxItemType,
+  OuiMeetingDiscussionState,
   OuiMeetingMessageRecord,
+  OuiMeetingModeratorDocument,
   OuiMeetingParticipant,
   OuiMeetingRecord,
   OuiMessageRecord,
   OuiProductStore,
+  OuiRoutineConcurrencyPolicy,
+  OuiRoutineStatus,
+  OuiRoutineTriggerKind,
   OuiRunbookKind,
   OuiRunbookRecord,
   OuiRunbookSourceType,
@@ -35,9 +40,12 @@ import type {
   OuiFeatureFlags,
   OuiJsonObject,
   OuiRunStore,
+  OuiRunRecord,
 } from "../shared/types.ts";
-import { OuiCeoService } from "./ceo-service.ts";
+import { OuiCeoService, type OuiCeoRuntime } from "./ceo-service.ts";
 import { OuiCompanyService } from "./company-service.ts";
+import { OuiExecutionService, type OuiExecutionInboxResult } from "./execution-service.ts";
+import { OuiRunDispatcher } from "./run-dispatcher.ts";
 
 export type OuiHttpServerOptions = {
   store: OuiRunStore;
@@ -49,6 +57,8 @@ export type OuiHttpServerOptions = {
   authToken?: string;
   adapterAllowlist?: ReadonlySet<string> | string[];
   artifactRoot?: string;
+  dispatcher?: OuiRunDispatcher;
+  ceoRuntime?: OuiCeoRuntime;
 };
 
 export type OuiHttpServer = {
@@ -63,6 +73,7 @@ export type OuiHttpRequestHandler = (req: IncomingMessage, res: ServerResponse) 
 export type OuiHttpRuntime = {
   flags: OuiFeatureFlags;
   handle: OuiHttpRequestHandler;
+  close?: () => void;
 };
 
 function sendJson(res: ServerResponse, statusCode: number, body: unknown): void {
@@ -157,6 +168,37 @@ function optionalString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function optionalBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function optionalNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function optionalMeetingThinkingIntensity(
+  value: unknown,
+): OuiMeetingParticipant["thinkingIntensity"] {
+  return value === "low" || value === "medium" || value === "high" ? value : null;
+}
+
+function sortMeetingParticipants(participants: readonly OuiMeetingParticipant[]) {
+  return [...participants].sort((left, right) => {
+    const leftOrder =
+      typeof left.speakingOrder === "number" && Number.isFinite(left.speakingOrder)
+        ? left.speakingOrder
+        : Number.MAX_SAFE_INTEGER;
+    const rightOrder =
+      typeof right.speakingOrder === "number" && Number.isFinite(right.speakingOrder)
+        ? right.speakingOrder
+        : Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    return left.label.localeCompare(right.label);
+  });
+}
+
 function safePathSegment(value: string): string {
   const safe = value
     .trim()
@@ -173,6 +215,21 @@ const RUNBOOK_SOURCE_TYPES = new Set<OuiRunbookSourceType>([
 ]);
 
 const RUNBOOK_KINDS = new Set<OuiRunbookKind>(["project", "routine"]);
+
+const ROUTINE_TRIGGER_KINDS = new Set<OuiRoutineTriggerKind>([
+  "manual",
+  "schedule",
+  "api",
+  "webhook",
+]);
+
+const ROUTINE_STATUSES = new Set<OuiRoutineStatus>(["active", "paused", "disabled"]);
+
+const ROUTINE_CONCURRENCY_POLICIES = new Set<OuiRoutineConcurrencyPolicy>([
+  "coalesce_if_active",
+  "skip_if_active",
+  "always_enqueue",
+]);
 
 const INBOX_ITEM_TYPES = new Set<OuiInboxItemType>([
   "choice",
@@ -224,12 +281,63 @@ function requireCompanyService(companyService: OuiCompanyService | null, res: Se
   return companyService;
 }
 
+function numericUsageValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function sumUsageKeys(usage: OuiJsonObject, keys: string[]): number {
+  return keys.reduce((total, key) => total + (numericUsageValue(usage[key]) ?? 0), 0);
+}
+
+function tokenUsageFromEvent(usage: OuiJsonObject): number {
+  for (const key of ["totalTokens", "total_tokens", "tokens", "total"]) {
+    const value = numericUsageValue(usage[key]);
+    if (value !== null) {
+      return value;
+    }
+  }
+  return sumUsageKeys(usage, [
+    "inputTokens",
+    "outputTokens",
+    "promptTokens",
+    "completionTokens",
+    "input_tokens",
+    "output_tokens",
+    "prompt_tokens",
+    "completion_tokens",
+  ]);
+}
+
+async function summarizeTaskRunTokenUsage(
+  productStore: OuiProductStore,
+  tasks: Awaited<ReturnType<OuiProductStore["listTasks"]>>,
+): Promise<number> {
+  const seenRunIds = new Set<string>();
+  let tokenUsageTotal = 0;
+  for (const task of tasks) {
+    const runLinks = await productStore.listTaskRunLinks(task.id);
+    for (const link of runLinks) {
+      if (seenRunIds.has(link.runId)) {
+        continue;
+      }
+      seenRunIds.add(link.runId);
+      const costEvents = await productStore.listCostEventsForRun(link.runId);
+      tokenUsageTotal += costEvents.reduce(
+        (total, event) => total + tokenUsageFromEvent(event.usage),
+        0,
+      );
+    }
+  }
+  return tokenUsageTotal;
+}
+
 async function listCompanySummaries(productStore: OuiProductStore): Promise<OuiCompanySummary[]> {
   const companies = await productStore.listCompanies();
   const summaries: OuiCompanySummary[] = [];
   for (const company of companies) {
     const agents = await productStore.listAgents(company.id);
     const tasks = await productStore.listTasks(company.id);
+    const tokenUsageTotal = await summarizeTaskRunTokenUsage(productStore, tasks);
     const runbooks = await productStore.listRunbooks(company.id);
     const activeRunbook =
       runbooks.find((runbook) => runbook.activeVersionId === company.currentRunbookVersionId) ??
@@ -244,7 +352,9 @@ async function listCompanySummaries(productStore: OuiProductStore): Promise<OuiC
         agents.find((agent) => agent.isLeader) ??
         null,
       taskCount: tasks.length,
+      completedTaskCount: tasks.filter((task) => task.status === "done").length,
       openInboxCount: (await productStore.listInboxItems(company.id, "open")).length,
+      tokenUsageTotal,
       activeRunbook,
       latestActivityAt: company.updatedAt,
     });
@@ -331,6 +441,9 @@ function asMeetingParticipants(value: unknown): OuiMeetingParticipant[] {
       openclawAgentId: optionalString(record.openclawAgentId),
       modelRef: optionalString(record.modelRef),
       role: optionalString(record.role),
+      muted: optionalBoolean(record.muted),
+      speakingOrder: optionalNumber(record.speakingOrder),
+      thinkingIntensity: optionalMeetingThinkingIntensity(record.thinkingIntensity),
     });
   }
   return participants;
@@ -352,10 +465,18 @@ function formatMeetingMinutes(input: {
     "## Participants",
     "",
     ...(input.meeting.participants.length
-      ? input.meeting.participants.map(
-          (participant) =>
-            `- ${participant.label} (${participant.adapterKind}${participant.modelRef ? ` / ${participant.modelRef}` : ""})`,
-        )
+      ? sortMeetingParticipants(input.meeting.participants).map((participant) => {
+          const detail = [
+            participant.adapterKind,
+            participant.modelRef,
+            participant.speakingOrder ? `#${participant.speakingOrder}` : null,
+            participant.muted ? "muted" : null,
+            participant.thinkingIntensity ? `thinking:${participant.thinkingIntensity}` : null,
+          ]
+            .filter(Boolean)
+            .join(" / ");
+          return `- ${participant.label} (${detail})`;
+        })
       : ["- No participants recorded."]),
     "",
     "## Transcript",
@@ -407,7 +528,195 @@ async function createMeetingMinutesArtifact(input: {
     status: "ended",
     minutesArtifactId: artifact.id,
   });
+  await input.productStore.updateMeetingDiscussion({
+    meetingId: meeting.id,
+    discussion: {
+      ...meetingDiscussionState(meeting),
+      phase: "ended",
+    },
+  });
   return artifact;
+}
+
+function meetingDiscussionState(meeting: OuiMeetingRecord): OuiMeetingDiscussionState {
+  return meeting.discussion?.activeDocument
+    ? meeting.discussion
+    : {
+        phase: meeting.status === "ended" ? "ended" : "drafting",
+        currentRound: 0,
+        activeDocument: {
+          round: 0,
+          text: [
+            `Meeting topic: ${meeting.title}`,
+            meeting.objective ? `Context: ${meeting.objective}` : null,
+          ]
+            .filter((line): line is string => line != null)
+            .join("\n"),
+          updatedAt: meeting.updatedAt || meeting.createdAt,
+          updatedBy: "seed",
+        },
+        roundHistory: [],
+      };
+}
+
+function updateMeetingDocument(
+  discussion: OuiMeetingDiscussionState,
+  input: {
+    text: string;
+    round: number;
+    updatedAt: string;
+    updatedBy: OuiMeetingModeratorDocument["updatedBy"];
+    phase?: OuiMeetingDiscussionState["phase"];
+    appendRoundHistory?: OuiMeetingDiscussionState["roundHistory"][number] | null;
+  },
+): OuiMeetingDiscussionState {
+  return {
+    phase: input.phase ?? discussion.phase,
+    currentRound: Math.max(discussion.currentRound, input.round),
+    activeDocument: {
+      round: input.round,
+      text: input.text,
+      updatedAt: input.updatedAt,
+      updatedBy: input.updatedBy,
+    },
+    roundHistory: input.appendRoundHistory
+      ? [...discussion.roundHistory, input.appendRoundHistory]
+      : discussion.roundHistory,
+  };
+}
+
+async function executeMeetingAdapterRun(input: {
+  adapterId: string;
+  agentId: string;
+  sessionKey: string;
+  runId: string;
+  message: string;
+  store: OuiRunStore;
+  dispatcher: OuiRunDispatcher;
+  now?: Date;
+}): Promise<OuiRunRecord> {
+  const run = await input.store.enqueueRun({
+    id: input.runId,
+    adapterId: input.adapterId,
+    adapterKind: "openclaw",
+    agentId: input.agentId,
+    sessionKey: input.sessionKey,
+    input: {
+      sessionKey: input.sessionKey,
+      message: input.message,
+    },
+    maxAttempts: 1,
+    now: input.now,
+  });
+  const dispatch = await input.dispatcher.dispatchRun(run.id);
+  return dispatch.status === "finished" || dispatch.status === "blocked"
+    ? dispatch.run
+    : ((await input.store.getRun(run.id)) ?? run);
+}
+
+async function waitForTerminalMeetingRun(input: {
+  store: OuiRunStore;
+  runId: string;
+  timeoutMs?: number;
+  pollMs?: number;
+}): Promise<OuiRunRecord | null> {
+  const timeoutMs = input.timeoutMs ?? 45_000;
+  const pollMs = input.pollMs ?? 500;
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    const run = await input.store.getRun(input.runId);
+    if (!run) {
+      return null;
+    }
+    if (isTerminalRunStatus(run.status)) {
+      return run;
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  return input.store.getRun(input.runId);
+}
+
+async function createMeetingModeratorDocument(input: {
+  meeting: OuiMeetingRecord;
+  store: OuiRunStore;
+  dispatcher: OuiRunDispatcher;
+  registry: OuiAdapterRegistry;
+  previousDocumentText: string;
+  round: number;
+  participantMessages: OuiMeetingMessageRecord[];
+  userInstruction?: string | null;
+}): Promise<{
+  text: string;
+  metadata: OuiJsonObject;
+}> {
+  const moderator = pickMeetingModeratorParticipant(input.meeting);
+  if (!moderator || moderator.adapterKind !== "openclaw" || !moderator.adapterId) {
+    return {
+      text: formatModeratorFallbackDocument({
+        meeting: input.meeting,
+        round: input.round,
+        previousDocumentText: input.previousDocumentText,
+        participantMessages: input.participantMessages,
+        userInstruction: input.userInstruction,
+      }),
+      metadata: {
+        source: "meeting_moderator_fallback",
+        round: input.round,
+      },
+    };
+  }
+  try {
+    input.registry.require(moderator.adapterId);
+    const initialRun = await executeMeetingAdapterRun({
+      adapterId: moderator.adapterId,
+      agentId: moderator.agentId ?? moderator.id,
+      sessionKey: meetingModeratorSessionKey(moderator, input.meeting.id),
+      runId: `oui-meeting:${input.meeting.id}:moderator:${input.round}:${Date.now()}`,
+      message: input.userInstruction
+        ? buildMeetingModeratorRevisionMessage({
+            meeting: input.meeting,
+            currentDocumentText: input.previousDocumentText,
+            instruction: input.userInstruction,
+          })
+        : buildMeetingModeratorRoundMessage({
+            meeting: input.meeting,
+            round: input.round,
+            previousDocumentText: input.previousDocumentText,
+            participantMessages: input.participantMessages,
+          }),
+      store: input.store,
+      dispatcher: input.dispatcher,
+    });
+    const run = isTerminalRunStatus(initialRun.status)
+      ? initialRun
+      : ((await waitForTerminalMeetingRun({
+          store: input.store,
+          runId: initialRun.id,
+        })) ?? initialRun);
+    return {
+      text: runSummary(run),
+      metadata: {
+        source: "meeting_moderator_openclaw",
+        round: input.round,
+        runId: run.id,
+        runStatus: run.status,
+      },
+    };
+  } catch {
+    return {
+      text: formatModeratorFallbackDocument({
+        meeting: input.meeting,
+        round: input.round,
+        previousDocumentText: input.previousDocumentText,
+        participantMessages: input.participantMessages,
+        userInstruction: input.userInstruction,
+      }),
+      metadata: {
+        source: "meeting_moderator_fallback",
+        round: input.round,
+      },
+    };
+  }
 }
 
 function workNodeStatusToControlNodeStatus(
@@ -513,13 +822,21 @@ function buildControlRoomReadModel(input: {
   const openInboxItems = inboxItems.filter((item) => item.status === "open");
   const activeRunbook = resolveActiveRunbook(company, runbooks, activeVersion);
   const nodes = buildControlRoomNodes(company, agents, activeVersion, workNodes);
+  const hasReadyOrRunningNode = workNodes.some(
+    (node) => node.status === "ready" || node.status === "running",
+  );
+  const hasIncompleteNode = workNodes.some(
+    (node) => node.status !== "done" && node.status !== "skipped",
+  );
   const nextStep = openInboxItems.length
     ? "Review the open inbox items before the company continues."
-    : workNodes.some((node) => node.status === "ready" || node.status === "running")
-      ? "Runbook is active. First work node is ready."
-      : activeVersion
-        ? "Confirm this runbook to create work nodes."
-        : "Talk to the CEO and approve a runbook before the company starts work.";
+    : hasReadyOrRunningNode
+      ? "Runbook is active. Work nodes are running or ready."
+      : activeVersion && workNodes.length && !hasIncompleteNode
+        ? "Runbook completed. Review the artifacts and CEO report."
+        : activeVersion
+          ? "Confirm this runbook to create work nodes."
+          : "Talk to the CEO and approve a runbook before the company starts work.";
   return {
     companyId: company.id,
     status: company.status,
@@ -547,6 +864,284 @@ function buildControlRoomReadModel(input: {
   };
 }
 
+function isTerminalRunStatus(status: OuiRunRecord["status"]): boolean {
+  return (
+    status === "succeeded" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "timed_out" ||
+    status === "blocked"
+  );
+}
+
+function extractText(value: unknown, depth = 0): string | null {
+  if (depth > 4) {
+    return null;
+  }
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  if (Array.isArray(value)) {
+    return (
+      value
+        .map((entry) => extractText(entry, depth + 1))
+        .filter((entry): entry is string => Boolean(entry))
+        .join("\n")
+        .trim() || null
+    );
+  }
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  for (const key of ["summary", "text", "content", "message", "output", "final", "result"]) {
+    const text = extractText(record[key], depth + 1);
+    if (text) {
+      return text;
+    }
+  }
+  return null;
+}
+
+function runSummary(run: OuiRunRecord): string {
+  const result = asObject(run.result);
+  return (
+    optionalString(result.summary) ??
+    extractText(result.resultJson) ??
+    optionalString(result.error) ??
+    optionalString(run.error) ??
+    `Run ${run.id} finished with status ${run.status}.`
+  );
+}
+
+function openClawAgentMainSessionKey(agentId: string | null | undefined): string {
+  const raw = (agentId || "main").trim();
+  return raw.startsWith("agent:") ? raw : `agent:${raw}:main`;
+}
+
+function openClawMainSessionKey(agent: OuiAgentRecord): string {
+  return openClawAgentMainSessionKey(agent.openclawAgentId || agent.id);
+}
+
+function meetingModeratorSessionKey(participant: OuiMeetingParticipant, meetingId: string): string {
+  const agentId = participant.openclawAgentId ?? participant.agentId ?? participant.id;
+  return openClawAgentMainSessionKey(agentId);
+}
+
+function pickMeetingModeratorParticipant(meeting: OuiMeetingRecord): OuiMeetingParticipant | null {
+  return (
+    sortMeetingParticipants(meeting.participants).find(
+      (participant) => participant.adapterKind === "openclaw" && participant.muted !== true,
+    ) ??
+    sortMeetingParticipants(meeting.participants).find(
+      (participant) => participant.muted !== true,
+    ) ??
+    sortMeetingParticipants(meeting.participants)[0] ??
+    null
+  );
+}
+
+function buildMeetingParticipantRoundMessage(input: {
+  meeting: OuiMeetingRecord;
+  participant: OuiMeetingParticipant;
+  round: number;
+  documentText: string;
+}): string {
+  return [
+    `You are ${input.participant.label}, participating in round ${input.round} of an OUI meeting room.`,
+    "Your goal is to improve the discussion, not to win.",
+    "Read the moderator document below, then contribute a distinct perspective, corrections, and remaining uncertainty.",
+    "Do not execute side effects.",
+    input.meeting.objective ? `Meeting objective: ${input.meeting.objective}` : null,
+    input.participant.thinkingIntensity
+      ? `Reasoning preference: ${input.participant.thinkingIntensity}.`
+      : null,
+    "",
+    "Moderator document:",
+    input.documentText,
+    "",
+    "Respond with:",
+    "- Your updated point of view",
+    "- What in the document seems weakest or most incomplete",
+    "- One correction or refinement",
+    "- What remains uncertain",
+  ]
+    .filter((line): line is string => line != null)
+    .join("\n");
+}
+
+function formatModeratorFallbackDocument(input: {
+  meeting: OuiMeetingRecord;
+  round: number;
+  previousDocumentText: string;
+  participantMessages: OuiMeetingMessageRecord[];
+  userInstruction?: string | null;
+}): string {
+  const participantLines = input.participantMessages.length
+    ? input.participantMessages.map((message) => {
+        const label =
+          input.meeting.participants.find((participant) => participant.id === message.participantId)
+            ?.label ??
+          message.participantId ??
+          "Participant";
+        return `- ${label}: ${message.content}`;
+      })
+    : ["- No participant responses recorded."];
+  return [
+    `Round ${input.round} moderator document`,
+    "",
+    `Topic: ${input.meeting.title}`,
+    input.meeting.objective ? `Context: ${input.meeting.objective}` : null,
+    input.userInstruction ? `User guidance: ${input.userInstruction}` : null,
+    "",
+    "Previous document:",
+    input.previousDocumentText,
+    "",
+    "Round contributions:",
+    ...participantLines,
+    "",
+    "Next round focus:",
+    "Carry forward the strongest ideas, preserve important disagreement, and correct weak or unsupported claims.",
+  ]
+    .filter((line): line is string => line != null)
+    .join("\n");
+}
+
+function buildMeetingModeratorRoundMessage(input: {
+  meeting: OuiMeetingRecord;
+  round: number;
+  previousDocumentText: string;
+  participantMessages: OuiMeetingMessageRecord[];
+}): string {
+  const contributions = input.participantMessages
+    .map((message) => {
+      const label =
+        input.meeting.participants.find((participant) => participant.id === message.participantId)
+          ?.label ??
+        message.participantId ??
+        "Participant";
+      return `${label}:\n${message.content}`;
+    })
+    .join("\n\n");
+  return [
+    `You are the moderator of an OUI meeting room. Produce the document for round ${input.round}.`,
+    "Do not decide who won. Preserve useful disagreement while moving the discussion forward.",
+    "",
+    `Meeting topic: ${input.meeting.title}`,
+    input.meeting.objective ? `Meeting objective: ${input.meeting.objective}` : null,
+    "",
+    "Previous moderator document:",
+    input.previousDocumentText,
+    "",
+    "Round contributions:",
+    contributions || "No participant contributions recorded.",
+    "",
+    "Write the next-round document with:",
+    "- A short current best understanding",
+    "- Main disagreement or unresolved tension",
+    "- Corrections to weak claims",
+    "- What the next round should focus on",
+  ]
+    .filter((line): line is string => line != null)
+    .join("\n");
+}
+
+function buildMeetingModeratorRevisionMessage(input: {
+  meeting: OuiMeetingRecord;
+  currentDocumentText: string;
+  instruction: string;
+}): string {
+  return [
+    `You are the moderator of an OUI meeting room for "${input.meeting.title}".`,
+    "Revise the moderator document based on the user's instruction without losing important disagreement.",
+    input.meeting.objective ? `Meeting objective: ${input.meeting.objective}` : null,
+    "",
+    "Current document:",
+    input.currentDocumentText,
+    "",
+    "User instruction:",
+    input.instruction,
+    "",
+    "Return the full updated moderator document.",
+  ]
+    .filter((line): line is string => line != null)
+    .join("\n");
+}
+
+function resolveWorkNodeAgent(input: {
+  company: OuiCompanyRecord;
+  node: OuiWorkNodeRecord;
+  agents: OuiAgentRecord[];
+}): OuiAgentRecord | null {
+  return (
+    (input.node.assignedAgentId
+      ? input.agents.find((agent) => agent.id === input.node.assignedAgentId)
+      : null) ??
+    (input.company.defaultLeaderAgentId
+      ? input.agents.find((agent) => agent.id === input.company.defaultLeaderAgentId)
+      : null) ??
+    (input.company.ceoAgentId
+      ? input.agents.find((agent) => agent.id === input.company.ceoAgentId)
+      : null) ??
+    input.agents.find((agent) => agent.isLeader) ??
+    null
+  );
+}
+
+function buildWorkNodeRunMessage(input: {
+  company: OuiCompanyRecord;
+  agent: OuiAgentRecord;
+  version: OuiRunbookVersionRecord;
+  node: OuiWorkNodeRecord;
+}): string {
+  return [
+    `You are ${input.agent.label}, working inside the OUI company "${input.company.name}".`,
+    "OUI is the control plane. OpenClaw is the lead agent runtime for this company.",
+    "Complete only the current work node. Do not perform destructive or external side effects unless the owner explicitly approved them in the runbook.",
+    "",
+    `Company objective: ${input.version.objective}`,
+    `Current stage: ${input.node.title}`,
+    input.node.summary ? `Stage brief: ${input.node.summary}` : null,
+    "",
+    "Return a concise owner-facing report with: completed work, concrete output, risks, and recommended next step.",
+  ]
+    .filter((line): line is string => line != null)
+    .join("\n");
+}
+
+function buildMeetingParticipantRunMessage(input: {
+  meeting: OuiMeetingRecord;
+  participant: OuiMeetingParticipant;
+  prompt: string;
+  priorMessages: OuiMeetingMessageRecord[];
+}): string {
+  const transcript = input.priorMessages
+    .slice(-12)
+    .map((message) => {
+      const speaker =
+        message.role === "owner"
+          ? "Owner"
+          : (input.meeting.participants.find((entry) => entry.id === message.participantId)
+              ?.label ?? message.role);
+      return `${speaker}: ${message.content}`;
+    })
+    .join("\n");
+  return [
+    `You are ${input.participant.label}, invited into an OUI meeting room.`,
+    "This is a free-agent discussion room. You are not automatically part of any company.",
+    "Give a direct meeting contribution from your perspective. Do not execute side effects.",
+    input.meeting.objective ? `Meeting objective: ${input.meeting.objective}` : null,
+    input.participant.thinkingIntensity
+      ? `Reasoning preference: ${input.participant.thinkingIntensity}.`
+      : null,
+    transcript ? `Current transcript:\n${transcript}` : null,
+    "",
+    `Owner agenda item: ${input.prompt}`,
+  ]
+    .filter((line): line is string => line != null)
+    .join("\n");
+}
+
 async function getCompanyDetail(
   productStore: OuiProductStore,
   companyId: string,
@@ -561,18 +1156,22 @@ async function getCompanyDetail(
     tasks,
     runbooks,
     runbookVersions,
+    routines,
     workNodes,
     inboxItems,
     artifacts,
+    auditLog,
   ] = await Promise.all([
     productStore.listAgents(companyId),
     productStore.listCeoConversations(companyId),
     productStore.listTasks(companyId),
     productStore.listRunbooks(companyId),
     productStore.listRunbookVersions(companyId),
+    productStore.listRoutines(companyId),
     productStore.listWorkNodes(companyId),
     productStore.listInboxItems(companyId),
     productStore.listArtifacts({ companyId }),
+    productStore.listAuditLog(companyId, 60),
   ]);
   const ceoMessages = ceoConversations[0]
     ? await productStore.listConversationMessages(ceoConversations[0].id, 50)
@@ -592,10 +1191,12 @@ async function getCompanyDetail(
     tasks,
     runbooks,
     runbookVersions,
+    routines,
     activeRunbookVersion,
     workNodes,
     inboxItems,
     artifacts,
+    auditLog,
     controlRoom: buildControlRoomReadModel({
       company,
       agents,
@@ -607,6 +1208,83 @@ async function getCompanyDetail(
       artifacts,
     }),
   };
+}
+
+async function syncRunningCompanyExecution(input: {
+  productStore: OuiProductStore;
+  executionService: OuiExecutionService | null;
+  companyId: string;
+}): Promise<void> {
+  if (!input.executionService) {
+    return;
+  }
+  const company = await input.productStore.getCompany(input.companyId);
+  if (!company?.currentRunbookVersionId) {
+    return;
+  }
+  const openInboxItems = await input.productStore.listInboxItems(company.id, "open");
+  if (openInboxItems.length) {
+    return;
+  }
+  if (company.status !== "running") {
+    return;
+  }
+  const activeWorkNodes = await input.productStore.listWorkNodes(
+    company.id,
+    company.currentRunbookVersionId,
+  );
+  const hasAdvanceableNode = activeWorkNodes.some(
+    (node) =>
+      (node.status === "running" && node.runId) ||
+      node.status === "ready" ||
+      node.status === "pending",
+  );
+  if (!hasAdvanceableNode) {
+    return;
+  }
+  await input.executionService.enqueueCompanyWakeup({
+    id: `wakeup:${company.id}:running-sync`,
+    companyId: company.id,
+    reason: "running_sync",
+    runbookVersionId: company.currentRunbookVersionId,
+    payload: { source: "company_read" },
+  });
+  await input.executionService.drainWorkWakeups({ maxWakeups: 4 });
+}
+
+async function listCompanyRunIds(
+  productStore: OuiProductStore,
+  companyId: string,
+): Promise<string[]> {
+  const runIds = new Set<string>();
+  const [tasks, workNodes, inboxItems, artifacts] = await Promise.all([
+    productStore.listTasks(companyId),
+    productStore.listWorkNodes(companyId),
+    productStore.listInboxItems(companyId),
+    productStore.listArtifacts({ companyId }),
+  ]);
+  for (const task of tasks) {
+    const links = await productStore.listTaskRunLinks(task.id);
+    for (const link of links) {
+      runIds.add(link.runId);
+    }
+  }
+  for (const node of workNodes) {
+    if (node.runId) {
+      runIds.add(node.runId);
+    }
+  }
+  for (const item of inboxItems) {
+    if (item.runId) {
+      runIds.add(item.runId);
+    }
+  }
+  for (const artifact of artifacts) {
+    if (artifact.runId) {
+      runIds.add(artifact.runId);
+    }
+  }
+  return [...runIds];
 }
 
 export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRuntime {
@@ -623,8 +1301,60 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
         })
       : null);
   const ceoService =
-    options.ceoService ?? (options.productStore ? new OuiCeoService(options.productStore) : null);
+    options.ceoService ??
+    (options.productStore
+      ? new OuiCeoService(options.productStore, { runtime: options.ceoRuntime })
+      : null);
   const artifactRoot = options.artifactRoot ?? path.join(process.cwd(), ".artifacts", "oui");
+  const dispatcher =
+    options.dispatcher ??
+    new OuiRunDispatcher({
+      store: options.store,
+      registry: options.registry,
+      flags,
+      workerId: "oui-http-inline",
+      adapterAllowlist: options.adapterAllowlist,
+    });
+  const meetingDispatcher = new OuiRunDispatcher({
+    store: options.store,
+    registry: options.registry,
+    flags,
+    workerId: "oui-http-meeting-inline",
+    leaseMs: 30_000,
+    inlineWaitMs: 125_000,
+    adapterAllowlist: options.adapterAllowlist,
+  });
+  const executionService = options.productStore
+    ? new OuiExecutionService({
+        productStore: options.productStore,
+        runStore: options.store,
+        registry: options.registry,
+        flags,
+        dispatcher,
+        adapterAllowlist: options.adapterAllowlist,
+      })
+    : null;
+  let backgroundDrainActive = false;
+  const backgroundDrain = executionService
+    ? setInterval(() => {
+        if (backgroundDrainActive) {
+          return;
+        }
+        backgroundDrainActive = true;
+        const routineDispatch = flags.ouiRoutinesEnabled
+          ? executionService.dispatchDueRoutines({ maxRoutines: 2 })
+          : Promise.resolve([]);
+        void routineDispatch
+          .then(() => executionService.drainWorkWakeups({ maxWakeups: 3 }))
+          .catch(() => {
+            // The next HTTP read or interval will surface and retry failed wakeups.
+          })
+          .finally(() => {
+            backgroundDrainActive = false;
+          });
+      }, 1_500)
+    : null;
+  (backgroundDrain as { unref?: () => void } | null)?.unref?.();
   const handle: OuiHttpRequestHandler = async (req, res) => {
     try {
       if (!isAuthorized(req, options.authToken)) {
@@ -640,6 +1370,7 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
           queueEnabled: flags.ouiRunQueueEnabled,
           openclawRunsEnabled: flags.ouiOpenClawAdapterRunsEnabled,
           externalAdaptersEnabled: flags.ouiExternalAdaptersEnabled,
+          routinesEnabled: flags.ouiRoutinesEnabled,
         });
         return;
       }
@@ -761,11 +1492,289 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
         if (!productStore) {
           return;
         }
-        const meeting = await productStore.updateMeetingStatus({
+        let meeting = await productStore.updateMeetingStatus({
           meetingId: decodeURIComponent(meetingStatusMatch[1]),
           status: meetingStatusMatch[2] === "start" ? "active" : "ended",
         });
+        if (meetingStatusMatch[2] === "end") {
+          meeting = await productStore.updateMeetingDiscussion({
+            meetingId: meeting.id,
+            discussion: {
+              ...meeting.discussion,
+              phase: "ended",
+            },
+          });
+        }
         sendJson(res, 200, { meeting });
+        return;
+      }
+
+      const meetingParticipantsMatch = /^\/api\/oui\/meetings\/([^/]+)\/participants$/.exec(
+        url.pathname,
+      );
+      if (req.method === "PUT" && meetingParticipantsMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const body = asObject(await readRequestBody(req));
+        sendJson(res, 200, {
+          meeting: await productStore.updateMeetingParticipants({
+            meetingId: decodeURIComponent(meetingParticipantsMatch[1]),
+            participants: asMeetingParticipants(body.participants),
+          }),
+        });
+        return;
+      }
+
+      const meetingDocumentMatch = /^\/api\/oui\/meetings\/([^/]+)\/document$/.exec(url.pathname);
+      if (req.method === "PUT" && meetingDocumentMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const meetingId = decodeURIComponent(meetingDocumentMatch[1]);
+        console.warn("[oui-meeting] PUT document", { meetingId });
+        const meeting = await productStore.getMeeting(meetingId);
+        if (!meeting) {
+          sendJson(res, 404, { error: "not_found" });
+          return;
+        }
+        const body = asObject(await readRequestBody(req));
+        const documentText = optionalString(body.document);
+        if (!documentText) {
+          sendJson(res, 400, { error: "invalid_meeting_document" });
+          return;
+        }
+        const now = new Date().toISOString();
+        const discussion = meetingDiscussionState(meeting);
+        const updatedMeeting = await productStore.updateMeetingDiscussion({
+          meetingId,
+          discussion: updateMeetingDocument(meetingDiscussionState(meeting), {
+            text: documentText,
+            round: discussion.currentRound,
+            updatedAt: now,
+            updatedBy: "user",
+            phase: meeting.status === "ended" ? "ended" : discussion.phase,
+          }),
+        });
+        sendJson(res, 200, { meeting: updatedMeeting });
+        return;
+      }
+
+      const meetingModeratorMatch = /^\/api\/oui\/meetings\/([^/]+)\/moderator\/revise$/.exec(
+        url.pathname,
+      );
+      if (req.method === "POST" && meetingModeratorMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const meetingId = decodeURIComponent(meetingModeratorMatch[1]);
+        console.warn("[oui-meeting] POST moderator revise", { meetingId });
+        const meeting = await productStore.getMeeting(meetingId);
+        if (!meeting) {
+          sendJson(res, 404, { error: "not_found" });
+          return;
+        }
+        const body = asObject(await readRequestBody(req));
+        const instruction = optionalString(body.instruction);
+        if (!instruction) {
+          sendJson(res, 400, { error: "invalid_moderator_instruction" });
+          return;
+        }
+        const discussion = meetingDiscussionState(meeting);
+        const ownerMessage = await productStore.appendMeetingMessage({
+          meetingId,
+          role: "owner",
+          content: instruction,
+          metadata: {
+            source: "meeting_moderator_instruction",
+            round: discussion.currentRound,
+          },
+        });
+        const moderatorDocument = await createMeetingModeratorDocument({
+          meeting,
+          store: options.store,
+          dispatcher: meetingDispatcher,
+          registry: options.registry,
+          previousDocumentText: discussion.activeDocument.text,
+          round: discussion.currentRound,
+          participantMessages: [],
+          userInstruction: instruction,
+        });
+        const moderatorMessage = await productStore.appendMeetingMessage({
+          meetingId,
+          role: "system",
+          content: moderatorDocument.text,
+          metadata: moderatorDocument.metadata,
+        });
+        const updatedMeeting = await productStore.updateMeetingDiscussion({
+          meetingId,
+          discussion: updateMeetingDocument(discussion, {
+            text: moderatorDocument.text,
+            round: discussion.currentRound,
+            updatedAt: new Date().toISOString(),
+            updatedBy: "moderator",
+            phase: meeting.status === "draft" ? "drafting" : "awaiting_user",
+          }),
+        });
+        sendJson(res, 200, {
+          meeting: updatedMeeting,
+          ownerMessage,
+          moderatorMessage,
+          messages: await productStore.listMeetingMessages(meetingId),
+        });
+        return;
+      }
+
+      const meetingRoundsMatch = /^\/api\/oui\/meetings\/([^/]+)\/rounds\/next$/.exec(url.pathname);
+      if (req.method === "POST" && meetingRoundsMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const meetingId = decodeURIComponent(meetingRoundsMatch[1]);
+        console.warn("[oui-meeting] POST rounds next", { meetingId });
+        let meeting = await productStore.getMeeting(meetingId);
+        if (!meeting) {
+          sendJson(res, 404, { error: "not_found" });
+          return;
+        }
+        if (meeting.status === "ended") {
+          sendJson(res, 409, { error: "meeting_ended" });
+          return;
+        }
+        const discussion = meetingDiscussionState(meeting);
+        const round = discussion.currentRound + 1;
+        const sourceDocumentText = discussion.activeDocument.text;
+        if (meeting.status === "draft") {
+          meeting = await productStore.updateMeetingStatus({ meetingId, status: "active" });
+        }
+        const participantMessages: OuiMeetingMessageRecord[] = [];
+        const activeParticipants = sortMeetingParticipants(meeting.participants).filter(
+          (participant) => participant.muted !== true,
+        );
+        for (const [index, participant] of activeParticipants.entries()) {
+          let content = `${participant.label} did not complete round ${round}.`;
+          let metadata: OuiJsonObject = {
+            source: "meeting_round_preview",
+            round,
+            adapterKind: participant.adapterKind,
+            execution: "preview_disabled",
+          };
+          const adapterId =
+            participant.adapterId ??
+            (participant.adapterKind === "openclaw" ? "openclaw-local" : null);
+          if (participant.adapterKind === "openclaw" && adapterId) {
+            try {
+              const adapter = options.registry.require(adapterId);
+              const policy = evaluateAdapterExecutionPolicy({
+                adapter,
+                flags,
+                allowlist: options.adapterAllowlist,
+              });
+              if (policy.allowed) {
+                const initialRun = await executeMeetingAdapterRun({
+                  adapterId: adapter.id,
+                  agentId: participant.agentId ?? participant.id,
+                  sessionKey: openClawAgentMainSessionKey(
+                    participant.openclawAgentId ?? participant.agentId ?? participant.id,
+                  ),
+                  runId: `oui-meeting:${meetingId}:round:${round}:${participant.id}:${Date.now() + index}`,
+                  message: buildMeetingParticipantRoundMessage({
+                    meeting,
+                    participant,
+                    round,
+                    documentText: sourceDocumentText,
+                  }),
+                  store: options.store,
+                  dispatcher: meetingDispatcher,
+                  now: new Date(Date.now() + index + 1),
+                });
+                const run = isTerminalRunStatus(initialRun.status)
+                  ? initialRun
+                  : ((await waitForTerminalMeetingRun({
+                      store: options.store,
+                      runId: initialRun.id,
+                    })) ?? initialRun);
+                content = runSummary(run);
+                metadata = {
+                  source: "meeting_round_openclaw",
+                  round,
+                  adapterKind: participant.adapterKind,
+                  execution: "openclaw_runtime",
+                  runId: run.id,
+                  runStatus: run.status,
+                };
+              } else {
+                content = policy.message;
+                metadata = {
+                  source: "meeting_round_policy",
+                  round,
+                  adapterKind: participant.adapterKind,
+                  execution: "blocked",
+                  policyCode: policy.code,
+                };
+              }
+            } catch (error) {
+              content = error instanceof Error ? error.message : String(error);
+              metadata = {
+                source: "meeting_round_error",
+                round,
+                adapterKind: participant.adapterKind,
+                execution: "failed",
+              };
+            }
+          }
+          participantMessages.push(
+            await productStore.appendMeetingMessage({
+              meetingId,
+              role: "participant",
+              participantId: participant.id,
+              content,
+              metadata,
+            }),
+          );
+        }
+        const moderatorDocument = await createMeetingModeratorDocument({
+          meeting,
+          store: options.store,
+          dispatcher: meetingDispatcher,
+          registry: options.registry,
+          previousDocumentText: sourceDocumentText,
+          round,
+          participantMessages,
+        });
+        const moderatorMessage = await productStore.appendMeetingMessage({
+          meetingId,
+          role: "system",
+          content: moderatorDocument.text,
+          metadata: moderatorDocument.metadata,
+        });
+        const updatedMeeting = await productStore.updateMeetingDiscussion({
+          meetingId,
+          discussion: updateMeetingDocument(discussion, {
+            text: moderatorDocument.text,
+            round,
+            updatedAt: new Date().toISOString(),
+            updatedBy: "moderator",
+            phase: "awaiting_user",
+            appendRoundHistory: {
+              round,
+              sourceDocumentText,
+              participantMessageIds: participantMessages.map((message) => message.id),
+              moderatorMessageId: moderatorMessage.id,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        });
+        sendJson(res, 201, {
+          meeting: updatedMeeting,
+          participantMessages,
+          moderatorMessage,
+          messages: await productStore.listMeetingMessages(meetingId),
+        });
         return;
       }
 
@@ -829,25 +1838,100 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
         if (meeting.status === "draft") {
           await productStore.updateMeetingStatus({ meetingId, status: "active" });
         }
+        const turnNow = new Date();
         const ownerMessage = await productStore.appendMeetingMessage({
           meetingId,
           role: "owner",
           content: prompt,
           metadata: { source: "meeting_turn" },
+          now: turnNow,
         });
         const participantMessages: OuiMeetingMessageRecord[] = [];
-        for (const participant of meeting.participants) {
+        const priorMessages = await productStore.listMeetingMessages(meetingId);
+        const activeParticipants = sortMeetingParticipants(meeting.participants).filter(
+          (participant) => participant.muted !== true,
+        );
+        for (const [index, participant] of activeParticipants.entries()) {
+          let content = `${participant.label} has recorded this agenda item for discussion. Adapter execution remains capability-gated.`;
+          let metadata: OuiJsonObject = {
+            source: "meeting_turn_preview",
+            adapterKind: participant.adapterKind,
+            execution: "preview_disabled",
+          };
+          const adapterId =
+            participant.adapterId ??
+            (participant.adapterKind === "openclaw" ? "openclaw-local" : null);
+          if (participant.adapterKind === "openclaw" && adapterId) {
+            try {
+              const adapter = options.registry.require(adapterId);
+              const policy = evaluateAdapterExecutionPolicy({
+                adapter,
+                flags,
+                allowlist: options.adapterAllowlist,
+              });
+              if (policy.allowed) {
+                const sessionKey = openClawAgentMainSessionKey(
+                  participant.openclawAgentId ?? participant.agentId ?? participant.id,
+                );
+                const run = await options.store.enqueueRun({
+                  id: `oui-meeting:${meetingId}:${participant.id}:${ownerMessage.id}`,
+                  adapterId: adapter.id,
+                  adapterKind: "openclaw",
+                  agentId: participant.agentId ?? participant.id,
+                  sessionKey,
+                  input: {
+                    sessionKey,
+                    message: buildMeetingParticipantRunMessage({
+                      meeting,
+                      participant,
+                      prompt,
+                      priorMessages,
+                    }),
+                    meetingId,
+                    participantId: participant.id,
+                  },
+                  maxAttempts: 1,
+                  now: new Date(turnNow.getTime() + index + 1),
+                });
+                const dispatch = await dispatcher.dispatchRun(run.id);
+                const latestRun =
+                  dispatch.status === "finished" || dispatch.status === "blocked"
+                    ? dispatch.run
+                    : ((await options.store.getRun(run.id)) ?? run);
+                content = runSummary(latestRun);
+                metadata = {
+                  source: "meeting_turn_openclaw",
+                  adapterKind: participant.adapterKind,
+                  execution: "openclaw_runtime",
+                  runId: latestRun.id,
+                  runStatus: latestRun.status,
+                };
+              } else {
+                content = policy.message;
+                metadata = {
+                  source: "meeting_turn_policy",
+                  adapterKind: participant.adapterKind,
+                  execution: "blocked",
+                  policyCode: policy.code,
+                };
+              }
+            } catch (error) {
+              content = error instanceof Error ? error.message : String(error);
+              metadata = {
+                source: "meeting_turn_error",
+                adapterKind: participant.adapterKind,
+                execution: "failed",
+              };
+            }
+          }
           participantMessages.push(
             await productStore.appendMeetingMessage({
               meetingId,
               role: "participant",
               participantId: participant.id,
-              content: `${participant.label} has recorded this agenda item for discussion. Adapter execution remains capability-gated.`,
-              metadata: {
-                source: "meeting_turn_preview",
-                adapterKind: participant.adapterKind,
-                execution: "preview_disabled",
-              },
+              content,
+              metadata,
+              now: new Date(turnNow.getTime() + index + 1),
             }),
           );
         }
@@ -913,6 +1997,15 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
               modelRef: typeof leader.modelRef === "string" ? leader.modelRef : null,
             },
           });
+          await productStore.recordAuditLog({
+            actorType: "owner",
+            actorId: "user",
+            companyId: result.company.id,
+            entityType: "company",
+            entityId: result.company.id,
+            action: "company.created",
+            details: { ceoAgentId: result.ceo.id },
+          });
           sendJson(res, 201, result);
           return;
         }
@@ -921,14 +2014,40 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
       }
 
       const companyMatch = /^\/api\/oui\/companies\/([^/]+)$/.exec(url.pathname);
-      if (req.method === "GET" && companyMatch) {
+      if (companyMatch) {
         const productStore = requireProductStore(options.productStore, res);
         if (!productStore) {
           return;
         }
         const companyId = decodeURIComponent(companyMatch[1]);
-        const detail = await getCompanyDetail(productStore, companyId);
-        sendJson(res, detail ? 200 : 404, detail ?? { error: "not_found" });
+        if (req.method === "GET") {
+          await syncRunningCompanyExecution({ productStore, executionService, companyId });
+          const detail = await getCompanyDetail(productStore, companyId);
+          sendJson(res, detail ? 200 : 404, detail ?? { error: "not_found" });
+          return;
+        }
+        if (req.method === "DELETE") {
+          const company = await productStore.getCompany(companyId);
+          if (!company) {
+            sendJson(res, 404, { error: "not_found" });
+            return;
+          }
+          const runIds = await listCompanyRunIds(productStore, companyId);
+          const deletedCompany = await productStore.deleteCompany(companyId);
+          const deletedRunIds: string[] = [];
+          for (const runId of runIds) {
+            if (await options.store.deleteRun(runId)) {
+              deletedRunIds.push(runId);
+            }
+          }
+          sendJson(res, 200, {
+            company: deletedCompany ?? company,
+            deletedRunIds,
+            summaries: await listCompanySummaries(productStore),
+          });
+          return;
+        }
+        sendJson(res, 405, { error: "method_not_allowed" });
         return;
       }
 
@@ -1042,15 +2161,30 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
         if (!productStore) {
           return;
         }
-        const detail = await getCompanyDetail(
-          productStore,
-          decodeURIComponent(companyControlRoomMatch[1]),
-        );
+        const companyId = decodeURIComponent(companyControlRoomMatch[1]);
+        await syncRunningCompanyExecution({ productStore, executionService, companyId });
+        const detail = await getCompanyDetail(productStore, companyId);
         sendJson(
           res,
           detail ? 200 : 404,
           detail ? { controlRoom: detail.controlRoom } : { error: "not_found" },
         );
+        return;
+      }
+
+      const companyAuditMatch = /^\/api\/oui\/companies\/([^/]+)\/audit$/.exec(url.pathname);
+      if (req.method === "GET" && companyAuditMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const companyId = decodeURIComponent(companyAuditMatch[1]);
+        const company = await productStore.getCompany(companyId);
+        if (!company) {
+          sendJson(res, 404, { error: "not_found" });
+          return;
+        }
+        sendJson(res, 200, { auditLog: await productStore.listAuditLog(companyId, 120) });
         return;
       }
 
@@ -1105,10 +2239,202 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
             reportPolicy: asObject(body.reportPolicy),
             markdownPath: typeof body.markdownPath === "string" ? body.markdownPath : null,
           });
+          await productStore.recordAuditLog({
+            actorType: "owner",
+            actorId: "user",
+            companyId,
+            entityType: "runbook_version",
+            entityId: result.version.id,
+            action: "runbook.draft_created",
+            details: {
+              runbookId: result.runbook.id,
+              operatingMode: result.version.operatingMode,
+              sourceType,
+            },
+          });
           sendJson(res, 201, result);
           return;
         }
         sendJson(res, 405, { error: "method_not_allowed" });
+        return;
+      }
+
+      const companyRoutinesMatch = /^\/api\/oui\/companies\/([^/]+)\/routines$/.exec(url.pathname);
+      if (companyRoutinesMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        if (!flags.ouiRoutinesEnabled) {
+          sendJson(res, 403, { error: "routines_disabled" });
+          return;
+        }
+        const companyId = decodeURIComponent(companyRoutinesMatch[1]);
+        const company = await productStore.getCompany(companyId);
+        if (!company) {
+          sendJson(res, 404, { error: "not_found" });
+          return;
+        }
+        if (req.method === "GET") {
+          sendJson(res, 200, { routines: await productStore.listRoutines(companyId) });
+          return;
+        }
+        if (req.method === "POST") {
+          const body = asObject(await readRequestBody(req));
+          const runbookVersionId =
+            optionalString(body.runbookVersionId) ?? optionalString(body.versionId);
+          const title = optionalString(body.title);
+          if (!runbookVersionId || !title) {
+            sendJson(res, 400, { error: "invalid_routine_input" });
+            return;
+          }
+          const triggerKind = ROUTINE_TRIGGER_KINDS.has(body.triggerKind as OuiRoutineTriggerKind)
+            ? (body.triggerKind as OuiRoutineTriggerKind)
+            : "schedule";
+          const concurrencyPolicy = ROUTINE_CONCURRENCY_POLICIES.has(
+            body.concurrencyPolicy as OuiRoutineConcurrencyPolicy,
+          )
+            ? (body.concurrencyPolicy as OuiRoutineConcurrencyPolicy)
+            : "skip_if_active";
+          const status = ROUTINE_STATUSES.has(body.status as OuiRoutineStatus)
+            ? (body.status as OuiRoutineStatus)
+            : "active";
+          const routine = await productStore.createRoutine({
+            id: optionalString(body.id) ?? undefined,
+            companyId,
+            runbookVersionId,
+            title,
+            description: optionalString(body.description),
+            triggerKind,
+            schedule: asObject(body.schedule),
+            concurrencyPolicy,
+            status,
+          });
+          await productStore.recordAuditLog({
+            actorType: "owner",
+            actorId: "user",
+            companyId,
+            entityType: "routine",
+            entityId: routine.id,
+            action: "routine.created",
+            details: {
+              runbookVersionId,
+              triggerKind,
+              concurrencyPolicy,
+            },
+          });
+          const detail = await getCompanyDetail(productStore, companyId);
+          sendJson(res, 201, { routine, detail });
+          return;
+        }
+        sendJson(res, 405, { error: "method_not_allowed" });
+        return;
+      }
+
+      const routineTriggersMatch = /^\/api\/oui\/routines\/([^/]+)\/triggers$/.exec(url.pathname);
+      if (req.method === "GET" && routineTriggersMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        if (!flags.ouiRoutinesEnabled) {
+          sendJson(res, 403, { error: "routines_disabled" });
+          return;
+        }
+        const routineId = decodeURIComponent(routineTriggersMatch[1]);
+        const routine = await productStore.getRoutine(routineId);
+        if (!routine) {
+          sendJson(res, 404, { error: "not_found" });
+          return;
+        }
+        sendJson(res, 200, { triggers: await productStore.listRoutineTriggers(routineId) });
+        return;
+      }
+
+      const routineTriggerMatch = /^\/api\/oui\/routines\/([^/]+)\/trigger$/.exec(url.pathname);
+      if (req.method === "POST" && routineTriggerMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        if (!flags.ouiRoutinesEnabled) {
+          sendJson(res, 403, { error: "routines_disabled" });
+          return;
+        }
+        if (!executionService) {
+          sendJson(res, 404, { error: "oui_execution_service_unavailable" });
+          return;
+        }
+        const body = asObject(await readRequestBody(req));
+        const triggerKind = ROUTINE_TRIGGER_KINDS.has(body.triggerKind as OuiRoutineTriggerKind)
+          ? (body.triggerKind as OuiRoutineTriggerKind)
+          : "manual";
+        const result = await executionService.triggerRoutine({
+          routineId: decodeURIComponent(routineTriggerMatch[1]),
+          triggerKind,
+          payload: asObject(body.payload),
+          actorId: optionalString(body.actorId) ?? "user",
+        });
+        await productStore.recordAuditLog({
+          actorType: "owner",
+          actorId: optionalString(body.actorId) ?? "user",
+          companyId: result.routine.companyId,
+          entityType: "routine",
+          entityId: result.routine.id,
+          action: "routine.triggered",
+          details: {
+            triggerId: result.trigger.id,
+            triggerStatus: result.trigger.status,
+            triggerKind,
+          },
+        });
+        const wakeupDispatches = result.wakeup
+          ? await executionService.drainWorkWakeups({ maxWakeups: 6 })
+          : [];
+        const detail = await getCompanyDetail(productStore, result.routine.companyId);
+        sendJson(res, 200, {
+          ...result,
+          wakeupDispatches,
+          execution: wakeupDispatches.at(-1)?.advance ?? null,
+          detail,
+          controlRoom: detail?.controlRoom ?? null,
+        });
+        return;
+      }
+
+      const routineStatusMatch = /^\/api\/oui\/routines\/([^/]+)\/(pause|resume|disable)$/.exec(
+        url.pathname,
+      );
+      if (req.method === "POST" && routineStatusMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        if (!flags.ouiRoutinesEnabled) {
+          sendJson(res, 403, { error: "routines_disabled" });
+          return;
+        }
+        const status: OuiRoutineStatus =
+          routineStatusMatch[2] === "resume"
+            ? "active"
+            : routineStatusMatch[2] === "disable"
+              ? "disabled"
+              : "paused";
+        const routine = await productStore.updateRoutineStatus({
+          routineId: decodeURIComponent(routineStatusMatch[1]),
+          status,
+        });
+        await productStore.recordAuditLog({
+          actorType: "owner",
+          actorId: "user",
+          companyId: routine.companyId,
+          entityType: "routine",
+          entityId: routine.id,
+          action: `routine.${status}`,
+          details: { status },
+        });
+        const detail = await getCompanyDetail(productStore, routine.companyId);
+        sendJson(res, 200, { routine, detail });
         return;
       }
 
@@ -1251,9 +2577,239 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
           decodeURIComponent(startRunbookMatch[1]),
           optionalString(body.startedBy) ?? "user",
         );
+        await productStore.recordAuditLog({
+          actorType: "owner",
+          actorId: optionalString(body.startedBy) ?? "user",
+          companyId: result.company.id,
+          entityType: "runbook_version",
+          entityId: result.version.id,
+          action: "runbook.started",
+          details: {
+            runbookId: result.runbook.id,
+            workNodeCount: result.workNodes.length,
+          },
+        });
+        const wakeup = executionService
+          ? await executionService.enqueueCompanyWakeup({
+              id: `wakeup:${result.version.id}:start`,
+              companyId: result.company.id,
+              reason: "runbook_started",
+              runbookVersionId: result.version.id,
+              payload: { startedBy: optionalString(body.startedBy) ?? "user" },
+            })
+          : null;
+        const wakeupDispatches = executionService
+          ? await executionService.drainWorkWakeups({ maxWakeups: 6 })
+          : [];
+        const execution = wakeupDispatches.at(-1)?.advance ?? null;
         const detail = await getCompanyDetail(productStore, result.company.id);
         sendJson(res, 200, {
           ...result,
+          wakeup,
+          wakeupDispatches,
+          execution,
+          company: detail?.company ?? result.company,
+          version: detail?.activeRunbookVersion ?? result.version,
+          workNodes: detail?.workNodes ?? result.workNodes,
+          detail,
+          controlRoom: detail?.controlRoom ?? null,
+        });
+        return;
+      }
+
+      const runWorkNodeMatch = /^\/api\/oui\/work-nodes\/([^/]+)\/run$/.exec(url.pathname);
+      if (req.method === "POST" && runWorkNodeMatch) {
+        const productStore = requireProductStore(options.productStore, res);
+        if (!productStore) {
+          return;
+        }
+        const body = asObject(await readRequestBody(req));
+        const nodeId = decodeURIComponent(runWorkNodeMatch[1]);
+        const node = await productStore.getWorkNode(nodeId);
+        if (!node) {
+          sendJson(res, 404, { error: "not_found" });
+          return;
+        }
+        if (node.status === "done" || node.status === "skipped") {
+          sendJson(res, 409, { error: "work_node_already_closed" });
+          return;
+        }
+        if (executionService) {
+          const wakeup = await executionService.enqueueCompanyWakeup({
+            id: `wakeup:${node.id}:requested`,
+            companyId: node.companyId,
+            reason: "work_node_requested",
+            runbookVersionId: node.runbookVersionId,
+            workNodeId: node.id,
+            payload: {
+              requestedBy: optionalString(body.requestedBy) ?? "user",
+              message: optionalString(body.message),
+              sessionKey: optionalString(body.sessionKey),
+            },
+          });
+          const wakeupDispatches = await executionService.drainWorkWakeups({ maxWakeups: 3 });
+          const latestNode = await productStore.getWorkNode(node.id);
+          const latestRun = latestNode?.runId ? await options.store.getRun(latestNode.runId) : null;
+          const detail = await getCompanyDetail(productStore, node.companyId);
+          sendJson(res, latestRun && isTerminalRunStatus(latestRun.status) ? 200 : 202, {
+            node: latestNode,
+            run: latestRun,
+            wakeup,
+            wakeupDispatches,
+            execution: wakeupDispatches.at(-1)?.advance ?? null,
+            detail,
+            controlRoom: detail?.controlRoom ?? null,
+          });
+          return;
+        }
+        const [company, version, agents] = await Promise.all([
+          productStore.getCompany(node.companyId),
+          productStore.getRunbookVersion(node.runbookVersionId),
+          productStore.listAgents(node.companyId),
+        ]);
+        if (!company || !version) {
+          sendJson(res, 404, { error: "not_found" });
+          return;
+        }
+        if (node.status === "running") {
+          const latestNode = await productStore.getWorkNode(node.id);
+          const latestRun = latestNode?.runId ? await options.store.getRun(latestNode.runId) : null;
+          const detail = await getCompanyDetail(productStore, company.id);
+          sendJson(res, latestRun && isTerminalRunStatus(latestRun.status) ? 200 : 202, {
+            node: latestNode,
+            run: latestRun,
+            execution: null,
+            detail,
+            controlRoom: detail?.controlRoom ?? null,
+          });
+          return;
+        }
+        const agent = resolveWorkNodeAgent({ company, node, agents });
+        if (!agent || agent.status !== "active") {
+          await productStore.updateWorkNodeRunState({
+            nodeId: node.id,
+            status: "blocked",
+            summary: "No active agent is available for this work node.",
+          });
+          const detail = await getCompanyDetail(productStore, company.id);
+          sendJson(res, 409, {
+            error: "no_active_agent",
+            detail,
+            controlRoom: detail?.controlRoom ?? null,
+          });
+          return;
+        }
+
+        const adapter = options.registry.require(agent.adapterId);
+        const policy = evaluateAdapterExecutionPolicy({
+          adapter,
+          flags,
+          allowlist: options.adapterAllowlist,
+        });
+        if (!policy.allowed) {
+          await productStore.updateWorkNodeRunState({
+            nodeId: node.id,
+            status: "blocked",
+            summary: policy.message,
+            output: { policyCode: policy.code },
+          });
+          const detail = await getCompanyDetail(productStore, company.id);
+          sendJson(res, 403, {
+            error: policy.code,
+            message: policy.message,
+            detail,
+            controlRoom: detail?.controlRoom ?? null,
+          });
+          return;
+        }
+
+        const sessionKey =
+          optionalString(body.sessionKey) ??
+          (agent.adapterKind === "openclaw" ? openClawMainSessionKey(agent) : "main");
+        const message =
+          optionalString(body.message) ??
+          buildWorkNodeRunMessage({ company, agent, version, node });
+        const run = await options.store.enqueueRun({
+          id:
+            optionalString(body.runId) ??
+            `${node.id}:run:${new Date().toISOString().replace(/[^0-9a-zA-Z]+/g, "")}`,
+          adapterId: adapter.id,
+          adapterKind: agent.adapterKind,
+          agentId: agent.id,
+          sessionKey,
+          input: {
+            sessionKey,
+            message,
+            companyId: company.id,
+            workNodeId: node.id,
+            runbookVersionId: version.id,
+            objective: version.objective,
+            stage: asObject(node.input.stage),
+          },
+          maxAttempts: typeof body.maxAttempts === "number" ? body.maxAttempts : 1,
+        });
+        await productStore.updateWorkNodeRunState({
+          nodeId: node.id,
+          status: "running",
+          runId: run.id,
+          summary: "Work node dispatched to its assigned agent.",
+          output: { runId: run.id },
+        });
+        const dispatch = await dispatcher.dispatchRun(run.id);
+        const latestRun =
+          dispatch.status === "finished" || dispatch.status === "blocked"
+            ? dispatch.run
+            : await options.store.getRun(run.id);
+        if (latestRun?.status === "succeeded") {
+          const completed = await productStore.completeWorkNode({
+            nodeId: node.id,
+            completedBy: agent.id,
+            summary: runSummary(latestRun),
+            output: {
+              runId: latestRun.id,
+              runStatus: latestRun.status,
+              result: latestRun.result ?? {},
+            },
+          });
+          const detail = await getCompanyDetail(productStore, company.id);
+          sendJson(res, 200, {
+            ...completed,
+            run: latestRun,
+            dispatch,
+            execution: null,
+            detail,
+            controlRoom: detail?.controlRoom ?? null,
+          });
+          return;
+        }
+        if (latestRun && isTerminalRunStatus(latestRun.status)) {
+          const blockedNode = await productStore.updateWorkNodeRunState({
+            nodeId: node.id,
+            status: "blocked",
+            runId: latestRun.id,
+            summary: runSummary(latestRun),
+            output: {
+              runId: latestRun.id,
+              runStatus: latestRun.status,
+              result: latestRun.result ?? {},
+              error: latestRun.error ?? null,
+            },
+          });
+          const detail = await getCompanyDetail(productStore, company.id);
+          sendJson(res, 200, {
+            node: blockedNode,
+            run: latestRun,
+            dispatch,
+            detail,
+            controlRoom: detail?.controlRoom ?? null,
+          });
+          return;
+        }
+        const detail = await getCompanyDetail(productStore, company.id);
+        sendJson(res, 202, {
+          node: await productStore.getWorkNode(node.id),
+          run: latestRun ?? run,
+          dispatch,
           detail,
           controlRoom: detail?.controlRoom ?? null,
         });
@@ -1275,9 +2831,26 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
           summary: optionalString(body.summary),
           output: asObject(body.output),
         });
+        const wakeup = executionService
+          ? await executionService.enqueueCompanyWakeup({
+              id: `wakeup:${result.node.id}:completed`,
+              companyId: result.company.id,
+              reason: "work_node_requested",
+              runbookVersionId: result.version.id,
+              workNodeId: result.nextNode?.id ?? result.node.id,
+              payload: { completedNodeId: result.node.id },
+            })
+          : null;
+        const wakeupDispatches = executionService
+          ? await executionService.drainWorkWakeups({ maxWakeups: 4 })
+          : [];
+        const execution = wakeupDispatches.at(-1)?.advance ?? null;
         const detail = await getCompanyDetail(productStore, result.company.id);
         sendJson(res, 200, {
           ...result,
+          wakeup,
+          wakeupDispatches,
+          execution,
           detail,
           controlRoom: detail?.controlRoom ?? null,
         });
@@ -1297,6 +2870,15 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
           decodeURIComponent(approveRunbookMatch[1]),
           optionalString(body.approvedBy) ?? "user",
         );
+        await productStore.recordAuditLog({
+          actorType: "owner",
+          actorId: optionalString(body.approvedBy) ?? "user",
+          companyId: version.companyId,
+          entityType: "runbook_version",
+          entityId: version.id,
+          action: "runbook.approved",
+          details: { runbookId: version.runbookId },
+        });
         const detail = await getCompanyDetail(productStore, version.companyId);
         sendJson(res, 200, {
           version,
@@ -1318,13 +2900,51 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
           sendJson(res, 400, { error: "invalid_inbox_resolution" });
           return;
         }
-        const item = await productStore.resolveInboxItem({
-          itemId: decodeURIComponent(resolveInboxMatch[1]),
-          action: action as OuiInboxResolutionAction,
-          responseText: optionalString(body.responseText),
+        const itemId = decodeURIComponent(resolveInboxMatch[1]);
+        const result: OuiExecutionInboxResult = executionService
+          ? await executionService.resolveInboxAndAdvance({
+              itemId,
+              action: action as OuiInboxResolutionAction,
+              responseText: optionalString(body.responseText),
+              actorId: optionalString(body.actorId) ?? "user",
+            })
+          : {
+              item: await productStore.resolveInboxItem({
+                itemId,
+                action: action as OuiInboxResolutionAction,
+                responseText: optionalString(body.responseText),
+                actorId: optionalString(body.actorId) ?? "user",
+              }),
+              completedNode: null,
+              advance: null,
+            };
+        const wakeupDispatches =
+          executionService && result.wakeup
+            ? await executionService.drainWorkWakeups({ maxWakeups: 6 })
+            : [];
+        if (executionService && result.wakeup && !result.advance) {
+          result.advance = wakeupDispatches.at(-1)?.advance ?? null;
+        }
+        await productStore.recordAuditLog({
+          actorType: "owner",
           actorId: optionalString(body.actorId) ?? "user",
+          companyId: result.item.companyId,
+          entityType: "inbox_item",
+          entityId: result.item.id,
+          action: `inbox.${action}`,
+          details: {
+            itemType: result.item.itemType,
+            wakeupId: result.wakeup?.id ?? null,
+            stopReason: result.advance?.stopReason ?? null,
+          },
         });
-        sendJson(res, 200, { item });
+        const detail = await getCompanyDetail(productStore, result.item.companyId);
+        sendJson(res, 200, {
+          ...result,
+          wakeupDispatches,
+          detail,
+          controlRoom: detail?.controlRoom ?? null,
+        });
         return;
       }
 
@@ -1445,7 +3065,33 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
           adapterId: typeof body.adapterId === "string" ? body.adapterId : undefined,
           maxAttempts: typeof body.maxAttempts === "number" ? body.maxAttempts : undefined,
         });
-        sendJson(res, result.status === "queued" ? 202 : 409, result);
+        if (result.status !== "queued") {
+          sendJson(res, 409, result);
+          return;
+        }
+        if (body.dispatch === false) {
+          sendJson(res, 202, result);
+          return;
+        }
+        const dispatch = await dispatcher.dispatchRun(result.run.id);
+        const run =
+          dispatch.status === "finished" || dispatch.status === "blocked"
+            ? dispatch.run
+            : ((await options.store.getRun(result.run.id)) ?? result.run);
+        if (isTerminalRunStatus(run.status)) {
+          await service.recordRunCostFromResult(result.task.id, run);
+          if (options.productStore) {
+            await options.productStore.updateTaskStatus(
+              result.task.id,
+              run.status === "succeeded" ? "review" : "blocked",
+            );
+          }
+        }
+        sendJson(res, isTerminalRunStatus(run.status) ? 200 : 202, {
+          ...result,
+          run,
+          dispatch,
+        });
         return;
       }
 
@@ -1466,6 +3112,18 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
         return;
       }
 
+      const dispatchRunMatch = /^\/api\/oui\/runs\/([^/]+)\/dispatch$/.exec(url.pathname);
+      if (req.method === "POST" && dispatchRunMatch) {
+        const runId = decodeURIComponent(dispatchRunMatch[1]);
+        const dispatch = await dispatcher.dispatchRun(runId);
+        const run =
+          dispatch.status === "finished" || dispatch.status === "blocked"
+            ? dispatch.run
+            : await options.store.getRun(runId);
+        sendJson(res, run ? 200 : 404, run ? { run, dispatch } : { error: "not_found" });
+        return;
+      }
+
       const cancelMatch = /^\/api\/oui\/runs\/([^/]+)\/cancel$/.exec(url.pathname);
       if (req.method === "POST" && cancelMatch) {
         const run = await options.store.requestCancel({
@@ -1481,7 +3139,15 @@ export function createOuiHttpRuntime(options: OuiHttpServerOptions): OuiHttpRunt
     }
   };
 
-  return { flags, handle };
+  return {
+    flags,
+    handle,
+    close() {
+      if (backgroundDrain) {
+        clearInterval(backgroundDrain);
+      }
+    },
+  };
 }
 
 export function createOuiHttpServer(options: OuiHttpServerOptions): OuiHttpServer {
@@ -1504,6 +3170,7 @@ export function createOuiHttpServer(options: OuiHttpServerOptions): OuiHttpServe
     close() {
       return new Promise((resolve, reject) => {
         server.close((error) => {
+          runtime.close?.();
           if (error) {
             reject(error);
             return;
